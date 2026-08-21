@@ -3,26 +3,26 @@ from __future__ import annotations
 from pathlib import Path
 
 from .audit import AuditTrail
-from .diagnosis import (
-    FixtureDiagnosisAdapter,
-    InvalidEvidenceReference,
-    validate_diagnosis,
-)
+from .diagnosis import DiagnosisError, GroqDiagnosisAdapter, ModelCallError, validate_diagnosis
 from .evidence import load_fixture
 from .executor import BoundedExecutor
 from .reconstruction import reconstruct
 from .safety import evaluate
+from .store import IncidentStore
 
 
 def run_incident(
     fixture_path,
-    audit_path,
+    state_path,
     *,
     diagnosis_adapter=None,
-    reset_audit=False,
+    reset_state=False,
+    env_path=None,
 ):
-    audit = AuditTrail(audit_path, reset=reset_audit)
+    store = IncidentStore(state_path, reset=reset_state)
+    audit = AuditTrail(store)
     bundle = load_fixture(fixture_path)
+    store.seed_payment(bundle)
     audit.append("incident_ingested", bundle)
 
     reconstruction = reconstruct(bundle)
@@ -36,34 +36,61 @@ def run_incident(
     )
     audit.append("timeline_reconstructed", reconstruction)
 
-    adapter = diagnosis_adapter or FixtureDiagnosisAdapter()
-    diagnosis = adapter.diagnose(bundle, reconstruction)
+    adapter = diagnosis_adapter or GroqDiagnosisAdapter.from_env(env_path)
+    audit.append("model_call_started", {"provider": adapter.provider, "model": adapter.model})
     try:
-        validate_diagnosis(diagnosis, reconstruction)
-    except InvalidEvidenceReference as exc:
-        audit.append("diagnosis_rejected", {"reason": str(exc), "diagnosis": diagnosis})
+        model_result = adapter.diagnose(bundle, reconstruction)
+        diagnosis = model_result["diagnosis"]
+        audit.append("model_call_completed", model_result["provenance"])
+        validate_diagnosis(diagnosis, bundle)
+    except (DiagnosisError, ModelCallError) as exc:
+        audit.append(
+            "model_call_failed",
+            {
+                "provider": adapter.provider,
+                "model": adapter.model,
+                "error_type": type(exc).__name__,
+                "reason": str(exc),
+            },
+        )
         raise
     audit.append("diagnosis_validated", diagnosis)
 
-    gate_decisions = []
-    outcome = None
-    executor = BoundedExecutor(audit)
-    for recommendation in diagnosis["remediations"]:
+    unsafe_retry = {
+        "action": "retry_capture",
+        "reasoning": "Naive retry after timeout",
+        "uncertainty": "The timeout does not prove the processor mutation failed.",
+        "evidence_ids": ["EV-TIMEOUT-001", "EV-WEBHOOK-001"],
+    }
+    gate_decisions = [evaluate(unsafe_retry, bundle, reconstruction)]
+    audit.append("safety_gate_decision", gate_decisions[0])
+
+    recommendation = diagnosis["recommendation"]
+    decision = evaluate(recommendation, bundle, reconstruction)
+    gate_decisions.append(decision)
+    audit.append("safety_gate_decision", decision)
+    if not decision["allowed"]:
+        recommendation = {
+            "action": "escalate",
+            "reasoning": "Required reconciliation invariants did not hold.",
+            "uncertainty": decision["reason"],
+            "evidence_ids": recommendation["evidence_ids"],
+        }
         decision = evaluate(recommendation, bundle, reconstruction)
         gate_decisions.append(decision)
         audit.append("safety_gate_decision", decision)
-        if decision["allowed"]:
-            outcome = executor.execute(decision, bundle, reconstruction)
-            break
 
-    if outcome is None:
-        raise RuntimeError("no bounded remediation or escalation was authorized")
+    executor = BoundedExecutor(store, audit)
+    outcome = executor.execute(decision, recommendation, bundle, reconstruction)
     audit.append("workflow_completed", outcome)
     return {
         "bundle": bundle,
         "reconstruction": reconstruction,
         "diagnosis": diagnosis,
+        "model_provenance": model_result["provenance"],
         "gate_decisions": gate_decisions,
         "outcome": outcome,
-        "audit_path": Path(audit_path),
+        "payment_state": store.payment(bundle["payment_id"]),
+        "state_path": Path(state_path),
+        "audit_records": audit.records(),
     }

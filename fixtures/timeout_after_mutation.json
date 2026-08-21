@@ -41,6 +41,7 @@
         "payment_state": "capture_pending",
         "amount_minor": 125000,
         "currency": "INR",
+        "operation": "capture",
         "last_operation_key": "capture-order-demo-001"
       }
     },
@@ -80,4 +81,3 @@
     }
   ]
 }
-
