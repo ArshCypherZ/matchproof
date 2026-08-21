@@ -275,6 +275,59 @@ class MagicPathTests(unittest.TestCase):
             with store.connect() as connection:
                 self.assertEqual(connection.execute("SELECT COUNT(*) FROM recoveries").fetchone()[0], 0)
 
+    def _assert_processor_operation_rejected(self, operation_marker):
+        changed = deepcopy(self.bundle)
+        for webhook in (item for item in changed["evidence"] if item["kind"] == "processor_webhook"):
+            if operation_marker is None:
+                webhook["payload"].pop("operation", None)
+            else:
+                webhook["payload"]["operation"] = operation_marker
+            webhook["processor_signature"] = processor_signature(webhook["payload"], "test-prototype-secret")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "incident.sqlite3"
+            store = IncidentStore(path)
+            with self.assertRaises(EvidenceError):
+                store.ingest(changed)
+            payment = store.payment(self.bundle["payment_id"])
+            self.assertIsNone(payment)
+            with store.connect() as connection:
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM recoveries").fetchone()[0], 0)
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM audit_events WHERE event_type = 'recovery_completed'").fetchone()[0], 0)
+
+    def test_rejects_processor_operation_refund(self):
+        self._assert_processor_operation_rejected("refund")
+
+    def test_rejects_processor_operation_missing(self):
+        self._assert_processor_operation_rejected(None)
+
+    def test_rejects_processor_operation_unsupported(self):
+        self._assert_processor_operation_rejected("payout")
+
+    def test_rejects_conflicting_processor_operation(self):
+        self._assert_processor_operation_rejected("refund")
+
+    def test_authenticated_contradictory_operation_cannot_reconcile(self):
+        changed = deepcopy(self.bundle)
+        for webhook in (item for item in changed["evidence"] if item["kind"] == "processor_webhook"):
+            webhook["payload"]["operation"] = "refund"
+            webhook["processor_signature"] = processor_signature(webhook["payload"], "test-prototype-secret")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "incident.sqlite3"
+            fixture = Path(directory) / "attack.json"
+            value = deepcopy(changed)
+            for item in value["evidence"]:
+                item.pop("processor_verified", None)
+                item["occurred_at"] = item["occurred_at"].isoformat().replace("+00:00", "Z")
+                item["received_at"] = item["received_at"].isoformat().replace("+00:00", "Z")
+            fixture.write_text(json.dumps(value), encoding="utf-8")
+            with self.assertRaises(EvidenceError):
+                run_incident(fixture, path, diagnosis_adapter=FixtureDiagnosisAdapter())
+            store = IncidentStore(path)
+            self.assertIsNone(store.payment(self.bundle["payment_id"]))
+            with store.connect() as connection:
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM recoveries").fetchone()[0], 0)
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM audit_events WHERE event_type = 'recovery_completed'").fetchone()[0], 0)
+
     def test_rejects_invalid_payment_id(self):
         self._assert_invalid_ingestion(lambda payload: payload.__setitem__("payment_id", "123"))
 

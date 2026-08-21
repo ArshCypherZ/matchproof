@@ -139,7 +139,7 @@ def _validate_financial_payload(item, bundle):
     if kind in {"payment_request", "internal_state", "processor_webhook"}:
         _validate_amount(payload.get("amount_minor"), f"{kind}.amount_minor")
         _validate_currency(payload.get("currency"), f"{kind}.currency")
-    if kind in {"payment_request", "processor_timeout", "internal_state"}:
+    if kind in {"payment_request", "processor_timeout", "internal_state", "processor_webhook"}:
         _validate_operation(payload.get("operation"), f"{kind}.operation")
     key_name = "last_operation_key" if kind == "internal_state" else "idempotency_key"
     _validate_text(payload.get(key_name), f"{kind}.{key_name}", _OPERATION_KEY)
@@ -217,5 +217,7 @@ def _validate_event_history(evidence):
                 raise EvidenceError("financial amount conflicts across evidence")
             if payload.get("currency") != request_payload.get("currency"):
                 raise EvidenceError("financial currency conflicts across evidence")
+        if payload.get("operation") != request_payload.get("operation"):
+            raise EvidenceError("financial operation conflicts across evidence")
     if "payment.captured" in processor_outcomes and "payment.failed" in processor_outcomes:
         raise EvidenceError("contradictory processor outcomes cannot be accepted")

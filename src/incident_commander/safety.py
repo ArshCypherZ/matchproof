@@ -90,6 +90,8 @@ def reconciliation_failures(bundle, reconstruction, merchant_state=None):
         failures.append("timeout operation is not capture")
     if internal_payload.get("operation") != "capture":
         failures.append("internal operation is not capture")
+    if webhook_payload.get("operation") != "capture":
+        failures.append("processor operation is not capture")
     if webhook_payload.get("event_type") != "payment.captured":
         failures.append("processor capture identity differs")
 

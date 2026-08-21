@@ -59,9 +59,10 @@
         "amount_minor": 125000,
         "currency": "INR",
         "idempotency_key": "capture-order-demo-001",
-        "signature_verified": true
+        "signature_verified": true,
+        "operation": "capture"
       },
-      "processor_signature": "6bce0a834b96458aa279fd2ce8bad33565e3722c297d6891c149d4bf20cbe473"
+      "processor_signature": "f6b440ae1ebbee3eaf94f460326943745febc815477a4a886abcfd887dc3e990"
     },
     {
       "evidence_id": "EV-WEBHOOK-002",
@@ -77,9 +78,10 @@
         "amount_minor": 125000,
         "currency": "INR",
         "idempotency_key": "capture-order-demo-001",
-        "signature_verified": true
+        "signature_verified": true,
+        "operation": "capture"
       },
-      "processor_signature": "6bce0a834b96458aa279fd2ce8bad33565e3722c297d6891c149d4bf20cbe473"
+      "processor_signature": "f6b440ae1ebbee3eaf94f460326943745febc815477a4a886abcfd887dc3e990"
     }
   ]
 }
