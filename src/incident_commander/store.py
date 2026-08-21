@@ -5,6 +5,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .evidence import VerifiedEvidence, _VERIFICATION_MARKER, verify_bundle
+
 
 class IncidentStore:
     def __init__(self, path, *, reset=False):
@@ -22,8 +24,11 @@ class IncidentStore:
         return connection
 
     def seed_payment(self, bundle):
+        if not isinstance(bundle, VerifiedEvidence) or bundle._marker is not _VERIFICATION_MARKER:
+            bundle = verify_bundle(bundle)
+        bundle_value = bundle.bundle
         internal = next(
-            item for item in bundle["evidence"] if item["kind"] == "internal_state"
+            item for item in bundle_value["evidence"] if item["kind"] == "internal_state"
         )["payload"]
         with self.connect() as connection:
             connection.execute(
@@ -46,11 +51,19 @@ class IncidentStore:
         self.save_evidence(bundle)
 
     def save_evidence(self, bundle):
+        if not isinstance(bundle, VerifiedEvidence) or bundle._marker is not _VERIFICATION_MARKER:
+            raise ValueError("save_evidence is internal; use verified ingestion")
+        value = bundle.bundle
         with self.connect() as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO incidents (incident_id, payment_id, idempotency_key, bundle) VALUES (?, ?, ?, ?)",
-                (bundle["incident_id"], bundle["payment_id"], bundle["idempotency_key"], json.dumps(_json_value(bundle), sort_keys=True)),
+                (value["incident_id"], value["payment_id"], value["idempotency_key"], json.dumps(_json_value(value), sort_keys=True)),
             )
+
+    def ingest_verified(self, verified):
+        if not isinstance(verified, VerifiedEvidence) or verified._marker is not _VERIFICATION_MARKER:
+            raise ValueError("canonical evidence requires verified ingestion")
+        self.seed_payment(verified)
 
     def incident(self, incident_id, connection=None):
         owns_connection = connection is None
@@ -60,11 +73,11 @@ class IncidentStore:
             if not row:
                 return None
             value = json.loads(row["bundle"])
-            from .evidence import _timestamp
+            from .evidence import _timestamp, verify_bundle
             for item in value["evidence"]:
                 item["occurred_at"] = _timestamp(item["occurred_at"])
                 item["received_at"] = _timestamp(item["received_at"])
-            return value
+            return verify_bundle(value).bundle
         finally:
             if owns_connection:
                 connection.close()

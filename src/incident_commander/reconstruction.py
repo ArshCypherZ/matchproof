@@ -19,13 +19,15 @@ def reconstruct(bundle):
         ),
     )
     transitions = _observation_transitions(canonical)
+    ambiguity = _history_ambiguity(canonical, duplicates)
     request = next(item for item in canonical if item["kind"] == "payment_request")
 
     return {
         "timeline": timeline,
         "observation_transitions": transitions,
         "duplicate_evidence_ids": duplicates,
-        "current_state": transitions[-1]["state"],
+        "current_state": "ambiguous" if ambiguity else transitions[-1]["state"],
+        "ambiguity_reasons": ambiguity,
         "impact_summary": {
             "payments_affected": 1,
             "payment_id": bundle["payment_id"],
@@ -89,6 +91,23 @@ def _observation_transitions(evidence):
     if not transitions:
         raise ValueError("evidence did not produce an incident state")
     return transitions
+
+
+def _history_ambiguity(evidence, duplicates):
+    reasons = []
+    webhooks = [item for item in evidence if item["kind"] == "processor_webhook"]
+    captures = [item for item in webhooks if item["payload"].get("event_type") == "payment.captured"]
+    if len(captures) > 1:
+        reasons.append("multiple distinct successful captures")
+    if any(item["payload"].get("event_type") == "payment.refunded" for item in webhooks) and captures:
+        reasons.append("capture and refund outcomes coexist")
+    requests = [item for item in evidence if item["kind"] == "payment_request"]
+    identities = {(x["payload"].get("payment_id"), x["payload"].get("amount_minor"), x["payload"].get("currency"), x["payload"].get("operation"), x["payload"].get("idempotency_key")) for x in requests}
+    if len(identities) > 1:
+        reasons.append("conflicting payment requests")
+    if len([x for x in evidence if x["kind"] == "processor_timeout"]) > 1:
+        reasons.append("multiple processor timeouts")
+    return reasons
 
 
 def _is_verified_capture(item):

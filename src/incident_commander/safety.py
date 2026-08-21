@@ -4,6 +4,19 @@ from __future__ import annotations
 def evaluate(recommendation, bundle, reconstruction, merchant_state=None):
     action = recommendation.get("action")
     evidence_ids = recommendation.get("evidence_ids", [])
+    canonical_ids = {item["evidence_id"] for item in reconstruction.get("timeline", [])}
+    invalid_citations = sorted(set(evidence_ids) - canonical_ids)
+    if invalid_citations or not evidence_ids:
+        return {
+            "action": action,
+            "allowed": False,
+            "reason": "blocked: recommendation cites non-canonical or missing evidence: " + str(invalid_citations or ["none"]),
+            "evidence_ids": evidence_ids,
+        }
+    if recommendation.get("incident_id") not in (None, bundle.get("incident_id")):
+        return {"action": action, "allowed": False, "reason": "blocked: recommendation incident binding differs", "evidence_ids": evidence_ids}
+    if recommendation.get("payment_id") not in (None, bundle.get("payment_id")):
+        return {"action": action, "allowed": False, "reason": "blocked: recommendation payment binding differs", "evidence_ids": evidence_ids}
     if action == "retry_capture":
         return {
             "action": action,
@@ -39,6 +52,8 @@ def evaluate(recommendation, bundle, reconstruction, merchant_state=None):
 
 
 def reconciliation_failures(bundle, reconstruction, merchant_state=None):
+    if reconstruction.get("ambiguity_reasons"):
+        return ["ambiguous financial history: " + ", ".join(reconstruction["ambiguity_reasons"])]
     request = _one(reconstruction["timeline"], "payment_request")
     timeout = _one(reconstruction["timeline"], "processor_timeout")
     webhook = _one(reconstruction["timeline"], "processor_webhook")

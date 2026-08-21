@@ -5,6 +5,7 @@ import os
 import socket
 import tempfile
 import threading
+import sqlite3
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -58,6 +59,17 @@ class FakeResponse:
 def load_fixture_from_bundle(bundle):
     _validate_bundle(bundle, "test-prototype-secret")
     return bundle
+
+
+def run_incident_from_bundle(bundle, state_path):
+    fixture = Path(str(state_path) + ".json")
+    value = deepcopy(bundle)
+    for item in value["evidence"]:
+        item.pop("processor_verified", None)
+        item["occurred_at"] = item["occurred_at"].isoformat().replace("+00:00", "Z")
+        item["received_at"] = item["received_at"].isoformat().replace("+00:00", "Z")
+    fixture.write_text(json.dumps(value), encoding="utf-8")
+    return run_incident(fixture, state_path, diagnosis_adapter=FixtureDiagnosisAdapter())
 
 
 class MagicPathTests(unittest.TestCase):
@@ -154,6 +166,76 @@ class MagicPathTests(unittest.TestCase):
     def test_valid_processor_signature_is_accepted(self):
         self.assertEqual(processor_signature(next(item for item in self.bundle["evidence"] if item["kind"] == "processor_webhook")["payload"], "test-prototype-secret"), next(item for item in self.bundle["evidence"] if item["kind"] == "processor_webhook")["processor_signature"])
 
+    def test_direct_save_evidence_rejects_caller_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = IncidentStore(Path(directory) / "incident.sqlite3")
+            forged = deepcopy(self.bundle)
+            webhook = next(item for item in forged["evidence"] if item["kind"] == "processor_webhook")
+            webhook["processor_verified"] = True
+            webhook["source"] = "attacker"
+            webhook["payload"]["signature_verified"] = True
+            with self.assertRaises(ValueError):
+                store.save_evidence(forged)
+            self.assertIsNone(store.incident(forged["incident_id"]))
+
+    def test_executor_rejects_fake_suppressed_and_cross_incident_citations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "incident.sqlite3"
+            store = IncidentStore(path)
+            store.seed_payment(self.bundle)
+            executor = BoundedExecutor(store, AuditTrail(store))
+            for citation in (["EV-FAKE-999"], ["EV-WEBHOOK-002"], ["EV-OTHER-001"]):
+                recommendation = self.recommendation()
+                recommendation["evidence_ids"] = citation
+                forged_decision = {"action": "reconcile_internal_state", "allowed": True, "reason": "forged", "evidence_ids": citation}
+                with self.assertRaises(AuthorizationError):
+                    executor.execute(forged_decision, recommendation, self.bundle["incident_id"], self.bundle["payment_id"])
+            self.assertEqual(store.payment(self.bundle["payment_id"])["state"], "capture_pending")
+
+    def test_persisted_verification_is_recomputed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "incident.sqlite3"
+            store = IncidentStore(path)
+            store.seed_payment(self.bundle)
+            with store.connect() as connection:
+                row = connection.execute("SELECT bundle FROM incidents WHERE incident_id = ?", (self.bundle["incident_id"],)).fetchone()
+                value = json.loads(row[0])
+                next(item for item in value["evidence"] if item["kind"] == "processor_webhook")["processor_verified"] = False
+                connection.execute("UPDATE incidents SET bundle = ? WHERE incident_id = ?", (json.dumps(value), self.bundle["incident_id"]))
+            self.assertTrue(next(item for item in store.incident(self.bundle["incident_id"])["evidence"] if item["kind"] == "processor_webhook")["processor_verified"])
+
+    def test_ambiguous_histories_escalate_without_mutation(self):
+        cases = []
+        multiple_timeout = deepcopy(self.bundle)
+        timeout = deepcopy(next(item for item in multiple_timeout["evidence"] if item["kind"] == "processor_timeout"))
+        timeout["evidence_id"] = "EV-TIMEOUT-002"
+        timeout["received_at"] = timeout["occurred_at"] = timeout["occurred_at"].replace(second=6)
+        multiple_timeout["evidence"].append(timeout)
+        cases.append(multiple_timeout)
+        captures = deepcopy(self.bundle)
+        capture = deepcopy(next(item for item in captures["evidence"] if item["kind"] == "processor_webhook"))
+        capture["evidence_id"] = "EV-WEBHOOK-003"
+        capture["payload"]["event_id"] = "evt_capture_002"
+        capture["processor_signature"] = processor_signature(capture["payload"], "test-prototype-secret")
+        captures["evidence"].append(capture)
+        cases.append(captures)
+        for changed in cases:
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "incident.sqlite3"
+                result = run_incident_from_bundle(changed, path)
+                self.assertEqual(result["outcome"]["status"], "escalated")
+                self.assertEqual(result["payment_state"]["state"], "capture_pending")
+
+    def test_post_commit_reporting_failure_is_not_financial_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "incident.sqlite3"
+            with patch("incident_commander.workflow.AuditTrail.append", side_effect=lambda event, payload: (_ for _ in ()).throw(RuntimeError("reporting unavailable")) if event == "workflow_completed" else 1):
+                result = run_incident(FIXTURE, path, diagnosis_adapter=FixtureDiagnosisAdapter())
+            self.assertEqual(result["outcome"]["status"], "committed_with_reporting_error")
+            self.assertEqual(IncidentStore(path).payment(self.bundle["payment_id"])["state"], "captured_verified")
+            replay = run_incident(FIXTURE, path, diagnosis_adapter=FixtureDiagnosisAdapter())
+            self.assertEqual(replay["outcome"]["status"], "already_completed")
+
     def test_chronology_and_conflicting_history_fail_closed(self):
         cases = []
         before_request = deepcopy(self.bundle)
@@ -248,7 +330,7 @@ class MagicPathTests(unittest.TestCase):
                     item["payload"]["currency"] = "USD"
             reconstruction = reconstruct(changed)
             store = IncidentStore(Path(directory) / "incident.sqlite3")
-            store.seed_payment(changed)
+            store.seed_payment(self.bundle)
             executor = BoundedExecutor(store, AuditTrail(store))
             forged = {"action": "reconcile_internal_state", "allowed": True, "reason": "forged", "evidence_ids": self.recommendation()["evidence_ids"]}
             with self.assertRaisesRegex(AuthorizationError, "contradicts"):

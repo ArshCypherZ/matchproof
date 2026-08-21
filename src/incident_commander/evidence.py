@@ -4,12 +4,26 @@ import json
 import hashlib
 import hmac
 import os
-from datetime import datetime
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
 class EvidenceError(ValueError):
     pass
+
+
+_VERIFICATION_MARKER = object()
+
+
+class VerifiedEvidence:
+    __slots__ = ("bundle", "_marker")
+
+    def __init__(self, bundle, marker=None):
+        if marker is not _VERIFICATION_MARKER:
+            raise EvidenceError("verified evidence must be created by verification")
+        self.bundle = bundle
+        self._marker = marker
 
 
 def _timestamp(value: str) -> datetime:
@@ -28,6 +42,15 @@ def load_fixture(path, *, processor_secret=None):
     return bundle
 
 
+def verify_bundle(bundle, processor_secret=None):
+    candidate = deepcopy(bundle)
+    for item in candidate["evidence"]:
+        item["occurred_at"] = _timestamp(item["occurred_at"]) if isinstance(item["occurred_at"], str) else item["occurred_at"]
+        item["received_at"] = _timestamp(item["received_at"]) if isinstance(item["received_at"], str) else item["received_at"]
+    _validate_bundle(candidate, processor_secret or os.environ.get("PROCESSOR_WEBHOOK_SECRET"))
+    return VerifiedEvidence(candidate, _VERIFICATION_MARKER)
+
+
 def _validate_bundle(bundle, processor_secret):
     evidence_ids = [item["evidence_id"] for item in bundle["evidence"]]
     if len(evidence_ids) != len(set(evidence_ids)):
@@ -37,6 +60,7 @@ def _validate_bundle(bundle, processor_secret):
 
     if not processor_secret:
         raise EvidenceError("prototype processor-signature secret is not configured")
+    now = datetime.now(timezone.utc)
     for item in bundle["evidence"]:
         payment_id = item["payload"].get("payment_id")
         if payment_id != bundle["payment_id"]:
@@ -45,7 +69,11 @@ def _validate_bundle(bundle, processor_secret):
             )
         if item["received_at"] < item["occurred_at"]:
             raise EvidenceError(f"{item['evidence_id']} was received before it occurred")
+        if item["received_at"] > now + timedelta(minutes=5):
+            raise EvidenceError(f"{item['evidence_id']} is future-dated")
         if item["kind"] == "processor_webhook":
+            if item.get("source") != "processor-webhook":
+                raise EvidenceError(f"{item['evidence_id']} has untrusted processor provenance")
             signature = item.get("processor_signature")
             if not signature or not verify_processor_signature(item["payload"], signature, processor_secret):
                 raise EvidenceError(f"{item['evidence_id']} failed prototype processor-signature verification")

@@ -42,6 +42,9 @@ class BoundedExecutor:
             if not merchant_state:
                 raise AuthorizationError("durable payment state is unavailable")
             if previous:
+                citation_authority = evaluate(recommendation, bundle, reconstruction)
+                if not citation_authority["allowed"] and action != "escalate":
+                    raise AuthorizationError(citation_authority["reason"])
                 if merchant_state["state"] == previous["after_state"]:
                     outcome = {
                         "status": "already_completed",
