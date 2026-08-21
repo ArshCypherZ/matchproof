@@ -1,0 +1,83 @@
+{
+  "incident_id": "inc_timeout_after_capture_001",
+  "payment_id": "pay_demo_001",
+  "idempotency_key": "capture-order-demo-001",
+  "evidence": [
+    {
+      "evidence_id": "EV-REQ-001",
+      "kind": "payment_request",
+      "occurred_at": "2026-08-21T10:00:00.000Z",
+      "received_at": "2026-08-21T10:00:00.000Z",
+      "source": "merchant-payment-service",
+      "payload": {
+        "payment_id": "pay_demo_001",
+        "operation": "capture",
+        "amount_minor": 125000,
+        "currency": "INR",
+        "idempotency_key": "capture-order-demo-001"
+      }
+    },
+    {
+      "evidence_id": "EV-TIMEOUT-001",
+      "kind": "processor_timeout",
+      "occurred_at": "2026-08-21T10:00:05.000Z",
+      "received_at": "2026-08-21T10:00:05.000Z",
+      "source": "merchant-payment-service",
+      "payload": {
+        "payment_id": "pay_demo_001",
+        "operation": "capture",
+        "timeout_ms": 5000,
+        "idempotency_key": "capture-order-demo-001"
+      }
+    },
+    {
+      "evidence_id": "EV-STATE-001",
+      "kind": "internal_state",
+      "occurred_at": "2026-08-21T10:00:05.100Z",
+      "received_at": "2026-08-21T10:00:05.100Z",
+      "source": "merchant-order-store",
+      "payload": {
+        "payment_id": "pay_demo_001",
+        "payment_state": "capture_pending",
+        "amount_minor": 125000,
+        "currency": "INR",
+        "last_operation_key": "capture-order-demo-001"
+      }
+    },
+    {
+      "evidence_id": "EV-WEBHOOK-001",
+      "kind": "processor_webhook",
+      "occurred_at": "2026-08-21T10:00:01.250Z",
+      "received_at": "2026-08-21T10:00:08.000Z",
+      "source": "processor-webhook",
+      "payload": {
+        "event_id": "evt_capture_demo_001",
+        "event_type": "payment.captured",
+        "payment_id": "pay_demo_001",
+        "payment_state": "captured",
+        "amount_minor": 125000,
+        "currency": "INR",
+        "idempotency_key": "capture-order-demo-001",
+        "signature_verified": true
+      }
+    },
+    {
+      "evidence_id": "EV-WEBHOOK-002",
+      "kind": "processor_webhook",
+      "occurred_at": "2026-08-21T10:00:01.250Z",
+      "received_at": "2026-08-21T10:00:09.000Z",
+      "source": "processor-webhook",
+      "payload": {
+        "event_id": "evt_capture_demo_001",
+        "event_type": "payment.captured",
+        "payment_id": "pay_demo_001",
+        "payment_state": "captured",
+        "amount_minor": 125000,
+        "currency": "INR",
+        "idempotency_key": "capture-order-demo-001",
+        "signature_verified": true
+      }
+    }
+  ]
+}
+

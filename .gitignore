@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.runtime/
+dist/
+build/
+*.egg-info/
+00_context/
+01_decision_evidence/
+RAZORPAY_WAR_ROOM_LOG_v1_MAGIC_PATH_READY_2026-08-21.md
+
