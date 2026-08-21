@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 
+from .reconstruction import reconstruct
 from .safety import evaluate
 
 
@@ -15,35 +16,46 @@ class BoundedExecutor:
         self.store = store
         self.audit = audit
 
-    def execute(self, decision, recommendation, bundle, reconstruction):
+    def execute(self, decision, recommendation, incident_id, payment_id=None, *diagnostic_metadata):
+        if isinstance(incident_id, dict):
+            supplied_bundle = incident_id
+            incident_id, payment_id = supplied_bundle.get("incident_id"), supplied_bundle.get("payment_id")
         action = recommendation.get("action")
         if action not in {"reconcile_internal_state", "escalate"}:
             raise AuthorizationError("executor rejects unsupported or money-moving actions")
 
-        execution_key = (
-            f"{action}:{bundle['incident_id']}:{bundle['payment_id']}:"
-            f"{bundle['idempotency_key']}"
-        )
         connection = self.store.connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
+            bundle = self.store.incident(incident_id, connection)
+            if not bundle or bundle["payment_id"] != payment_id:
+                raise AuthorizationError("canonical incident evidence is unavailable")
+            reconstruction = reconstruct(bundle)
+            execution_key = (
+                f"{action}:{bundle['incident_id']}:{bundle['payment_id']}:"
+                f"{bundle['idempotency_key']}"
+            )
             previous = connection.execute(
                 "SELECT * FROM recoveries WHERE execution_key = ?", (execution_key,)
             ).fetchone()
+            merchant_state = self.store.payment(payment_id, connection)
+            if not merchant_state:
+                raise AuthorizationError("durable payment state is unavailable")
             if previous:
-                outcome = {
-                    "status": "already_completed",
-                    "action": action,
-                    "idempotency_key": execution_key,
-                    "before_state": previous["before_state"],
-                    "after_state": previous["after_state"],
-                    "reason": "recovery already completed for this idempotency key",
-                }
-                self.store.audit("recovery_duplicate_suppressed", outcome, connection)
-                connection.commit()
-                return outcome
-
-            merchant_state = self.store.payment(bundle["payment_id"], connection)
+                if merchant_state["state"] == previous["after_state"]:
+                    outcome = {
+                        "status": "already_completed",
+                        "action": action,
+                        "idempotency_key": execution_key,
+                        "before_state": previous["before_state"],
+                        "after_state": previous["after_state"],
+                        "reason": "recovery already completed and durable state agrees",
+                    }
+                    self.store.audit("recovery_duplicate_suppressed", outcome, connection)
+                    connection.commit()
+                    return outcome
+                self.store.audit("stale_recovery_reopened", {"execution_key": execution_key}, connection)
+                connection.execute("DELETE FROM recoveries WHERE execution_key = ?", (execution_key,))
             authoritative = evaluate(recommendation, bundle, reconstruction, merchant_state)
             if decision != authoritative:
                 raise AuthorizationError("caller decision contradicts executor authorization")
@@ -88,7 +100,7 @@ class BoundedExecutor:
             self.store.audit("recovery_completed", outcome, connection)
             connection.commit()
             return outcome
-        except (AuthorizationError, sqlite3.IntegrityError):
+        except Exception:
             connection.rollback()
             raise
         finally:

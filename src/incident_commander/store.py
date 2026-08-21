@@ -43,6 +43,31 @@ class IncidentStore:
                     _now(),
                 ),
             )
+        self.save_evidence(bundle)
+
+    def save_evidence(self, bundle):
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO incidents (incident_id, payment_id, idempotency_key, bundle) VALUES (?, ?, ?, ?)",
+                (bundle["incident_id"], bundle["payment_id"], bundle["idempotency_key"], json.dumps(_json_value(bundle), sort_keys=True)),
+            )
+
+    def incident(self, incident_id, connection=None):
+        owns_connection = connection is None
+        connection = connection or self.connect()
+        try:
+            row = connection.execute("SELECT * FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
+            if not row:
+                return None
+            value = json.loads(row["bundle"])
+            from .evidence import _timestamp
+            for item in value["evidence"]:
+                item["occurred_at"] = _timestamp(item["occurred_at"])
+                item["received_at"] = _timestamp(item["received_at"])
+            return value
+        finally:
+            if owns_connection:
+                connection.close()
 
     def payment(self, payment_id, connection=None):
         owns_connection = connection is None
@@ -97,6 +122,13 @@ class IncidentStore:
                     operation TEXT NOT NULL,
                     operation_key TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS incidents (
+                    incident_id TEXT PRIMARY KEY,
+                    payment_id TEXT NOT NULL,
+                    idempotency_key TEXT NOT NULL,
+                    bundle TEXT NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS recoveries (

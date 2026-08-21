@@ -87,7 +87,7 @@ def reconciliation_failures(bundle, reconstruction, merchant_state=None):
     if operation_keys != {expected_key}:
         failures.append("operation/idempotency key differs")
 
-    if webhook_payload.get("signature_verified") is not True:
+    if not webhook.get("processor_verified"):
         failures.append("processor signature is not verified")
     if webhook_payload.get("payment_state") != "captured":
         failures.append("processor state is not captured")

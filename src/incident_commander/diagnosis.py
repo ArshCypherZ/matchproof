@@ -248,14 +248,14 @@ class FixtureDiagnosisAdapter:
         }
 
 
-def validate_diagnosis(diagnosis, bundle):
+def validate_diagnosis(diagnosis, reconstruction):
     if not isinstance(diagnosis, dict) or set(diagnosis) != {"hypotheses", "recommendation"}:
         raise DiagnosisError("diagnosis has an invalid shape")
     hypotheses = diagnosis["hypotheses"]
     if not isinstance(hypotheses, list) or not 1 <= len(hypotheses) <= 3:
         raise DiagnosisError("diagnosis must contain one to three hypotheses")
 
-    valid_ids = {item["evidence_id"] for item in bundle["evidence"]}
+    valid_ids = {item["evidence_id"] for item in reconstruction["timeline"]}
     expected_ranks = list(range(1, len(hypotheses) + 1))
     if [item.get("rank") for item in hypotheses] != expected_ranks:
         raise DiagnosisError("hypotheses must be ranked consecutively from 1")

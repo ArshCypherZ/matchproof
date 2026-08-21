@@ -60,7 +60,8 @@
         "currency": "INR",
         "idempotency_key": "capture-order-demo-001",
         "signature_verified": true
-      }
+      },
+      "processor_signature": "6bce0a834b96458aa279fd2ce8bad33565e3722c297d6891c149d4bf20cbe473"
     },
     {
       "evidence_id": "EV-WEBHOOK-002",
@@ -77,7 +78,8 @@
         "currency": "INR",
         "idempotency_key": "capture-order-demo-001",
         "signature_verified": true
-      }
+      },
+      "processor_signature": "6bce0a834b96458aa279fd2ce8bad33565e3722c297d6891c149d4bf20cbe473"
     }
   ]
 }

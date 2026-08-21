@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from .audit import AuditTrail
-from .diagnosis import DiagnosisError, GroqDiagnosisAdapter, ModelCallError, validate_diagnosis
-from .evidence import load_fixture
+from .diagnosis import DiagnosisError, GroqDiagnosisAdapter, ModelCallError, load_env, validate_diagnosis
+from .evidence import EvidenceError, load_fixture
 from .executor import BoundedExecutor
 from .reconstruction import reconstruct
 from .safety import evaluate
@@ -19,9 +19,15 @@ def run_incident(
     reset_state=False,
     env_path=None,
 ):
+    if env_path:
+        load_env(env_path)
     store = IncidentStore(state_path, reset=reset_state)
     audit = AuditTrail(store)
-    bundle = load_fixture(fixture_path)
+    try:
+        bundle = load_fixture(fixture_path)
+    except EvidenceError as exc:
+        audit.append("evidence_rejected", {"reason": str(exc), "mechanism": "prototype_hmac_sha256"})
+        raise
     store.seed_payment(bundle)
     audit.append("incident_ingested", bundle)
 
@@ -42,7 +48,7 @@ def run_incident(
         model_result = adapter.diagnose(bundle, reconstruction)
         diagnosis = model_result["diagnosis"]
         audit.append("model_call_completed", model_result["provenance"])
-        validate_diagnosis(diagnosis, bundle)
+        validate_diagnosis(diagnosis, reconstruction)
     except (DiagnosisError, ModelCallError) as exc:
         audit.append(
             "model_call_failed",
@@ -81,7 +87,7 @@ def run_incident(
         audit.append("safety_gate_decision", decision)
 
     executor = BoundedExecutor(store, audit)
-    outcome = executor.execute(decision, recommendation, bundle, reconstruction)
+    outcome = executor.execute(decision, recommendation, bundle["incident_id"], bundle["payment_id"])
     audit.append("workflow_completed", outcome)
     return {
         "bundle": bundle,

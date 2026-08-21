@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import tempfile
 import threading
@@ -11,7 +12,7 @@ from unittest.mock import patch
 
 from incident_commander.audit import AuditTrail
 from incident_commander.diagnosis import DiagnosisError, FixtureDiagnosisAdapter, GroqDiagnosisAdapter, ModelCallError
-from incident_commander.evidence import load_fixture
+from incident_commander.evidence import EvidenceError, _validate_bundle, load_fixture, processor_signature
 from incident_commander.executor import AuthorizationError, BoundedExecutor
 from incident_commander.reconstruction import reconstruct
 from incident_commander.safety import evaluate
@@ -33,6 +34,13 @@ class InvalidCitationAdapter:
         return result
 
 
+class SuppressedCitationAdapter(InvalidCitationAdapter):
+    def diagnose(self, bundle, reconstruction):
+        result = FixtureDiagnosisAdapter().diagnose(bundle, reconstruction)
+        result["diagnosis"]["hypotheses"][0]["evidence_ids"] = ["EV-WEBHOOK-002"]
+        return result
+
+
 class FakeResponse:
     def __init__(self, body):
         self.body = json.dumps(body).encode()
@@ -47,8 +55,14 @@ class FakeResponse:
         return self.body
 
 
+def load_fixture_from_bundle(bundle):
+    _validate_bundle(bundle, "test-prototype-secret")
+    return bundle
+
+
 class MagicPathTests(unittest.TestCase):
     def setUp(self):
+        os.environ["PROCESSOR_WEBHOOK_SECRET"] = "test-prototype-secret"
         self.bundle = load_fixture(FIXTURE)
         self.reconstruction = reconstruct(self.bundle)
 
@@ -114,6 +128,82 @@ class MagicPathTests(unittest.TestCase):
             self.assertIn("model_call_completed", events)
             self.assertIn("model_call_failed", events)
             self.assertNotIn("recovery_completed", events)
+
+    def test_suppressed_evidence_cannot_be_cited(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(DiagnosisError):
+                run_incident(FIXTURE, Path(directory) / "incident.sqlite3", diagnosis_adapter=SuppressedCitationAdapter())
+
+    def test_processor_signature_boundary_rejects_attacks(self):
+        webhook = next(item for item in self.bundle["evidence"] if item["kind"] == "processor_webhook")
+        self.assertTrue(webhook["processor_verified"])
+        for mutate in (
+            lambda item: item.__setitem__("processor_signature", "forged"),
+            lambda item: item["payload"].__setitem__("amount_minor", 1),
+        ):
+            changed = deepcopy(self.bundle)
+            target = next(item for item in changed["evidence"] if item["kind"] == "processor_webhook")
+            mutate(target)
+            with self.assertRaises(EvidenceError):
+                load_fixture_from_bundle(changed)
+        spoofed = deepcopy(self.bundle)
+        target = next(item for item in spoofed["evidence"] if item["kind"] == "processor_webhook")
+        target["payload"]["signature_verified"] = True
+        self.assertTrue(load_fixture_from_bundle(spoofed))
+
+    def test_valid_processor_signature_is_accepted(self):
+        self.assertEqual(processor_signature(next(item for item in self.bundle["evidence"] if item["kind"] == "processor_webhook")["payload"], "test-prototype-secret"), next(item for item in self.bundle["evidence"] if item["kind"] == "processor_webhook")["processor_signature"])
+
+    def test_chronology_and_conflicting_history_fail_closed(self):
+        cases = []
+        before_request = deepcopy(self.bundle)
+        for item in before_request["evidence"]:
+            if item["kind"] == "processor_webhook":
+                item["occurred_at"] = before_request["evidence"][0]["occurred_at"].replace(hour=9)
+                item["processor_signature"] = processor_signature(item["payload"], "test-prototype-secret")
+        cases.append(before_request)
+        conflict = deepcopy(self.bundle)
+        failed = deepcopy(next(item for item in conflict["evidence"] if item["kind"] == "processor_webhook"))
+        failed["evidence_id"] = "EV-WEBHOOK-003"
+        failed["payload"]["event_id"] = "evt_failed"
+        failed["payload"]["event_type"] = "payment.failed"
+        failed["processor_signature"] = processor_signature(failed["payload"], "test-prototype-secret")
+        conflict["evidence"].append(failed)
+        cases.append(conflict)
+        for changed in cases:
+            with self.assertRaises(EvidenceError):
+                load_fixture_from_bundle(changed)
+
+    def test_stale_recovery_record_is_repaired(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "incident.sqlite3"
+            store = IncidentStore(path)
+            store.seed_payment(self.bundle)
+            key = "reconcile_internal_state:inc_timeout_after_capture_001:pay_demo_001:capture-order-demo-001"
+            with store.connect() as connection:
+                connection.execute("INSERT INTO recoveries VALUES (?, ?, ?, ?, ?, ?)", (key, "reconcile_internal_state", "reconciled", "capture_pending", "captured_verified", "now"))
+            result = run_incident(FIXTURE, path, diagnosis_adapter=FixtureDiagnosisAdapter())
+            self.assertEqual(result["outcome"]["status"], "reconciled")
+
+    def test_audit_failure_rolls_back_recovery_and_restart_recovers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "incident.sqlite3"
+            store = IncidentStore(path)
+            store.seed_payment(self.bundle)
+            executor = BoundedExecutor(store, AuditTrail(store))
+            recommendation = self.recommendation()
+            decision = evaluate(recommendation, self.bundle, self.reconstruction)
+            original = store.audit
+            def corrupt(event_type, payload, connection=None):
+                if event_type == "recovery_completed":
+                    raise ValueError("corrupt audit input")
+                return original(event_type, payload, connection)
+            store.audit = corrupt
+            with self.assertRaises(ValueError):
+                executor.execute(decision, recommendation, self.bundle["incident_id"], self.bundle["payment_id"])
+            self.assertEqual(store.payment("pay_demo_001")["state"], "capture_pending")
+            result = run_incident(FIXTURE, path, diagnosis_adapter=FixtureDiagnosisAdapter())
+            self.assertEqual(result["outcome"]["status"], "reconciled")
 
     def test_groq_adapter_uses_strict_schema_and_records_provenance(self):
         diagnosis = FixtureDiagnosisAdapter().diagnose(self.bundle, self.reconstruction)["diagnosis"]

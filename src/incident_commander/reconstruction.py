@@ -96,5 +96,5 @@ def _is_verified_capture(item):
     return (
         payload.get("event_type") == "payment.captured"
         and payload.get("payment_state") == "captured"
-        and payload.get("signature_verified") is True
+        and item.get("processor_verified") is True
     )
