@@ -1,38 +1,82 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from pathlib import Path
 
+from .diagnosis import DiagnosisError, FixtureDiagnosisAdapter, ModelCallError, load_env
+from .evidence import EvidenceError
 from .workflow import run_incident
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FIXTURE = REPOSITORY_ROOT / "fixtures" / "timeout_after_mutation.json"
-DEFAULT_STATE = REPOSITORY_ROOT / ".runtime" / "mp001.sqlite3"
+DEFAULT_STATE = REPOSITORY_ROOT / ".runtime" / "o2-incident.sqlite3"
 DEFAULT_ENV = REPOSITORY_ROOT / ".env"
+REHEARSAL_PROCESSOR_SECRET = "test-prototype-secret"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run the MP-001 financial incident magic path")
+    parser = argparse.ArgumentParser(description="Run the O2 Financial AI Incident Commander")
+    parser.add_argument(
+        "--mode",
+        choices=("fixture", "live"),
+        default="fixture",
+        help="diagnosis mode: fixture rehearsal (default, no network) or live Groq",
+    )
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--state", type=Path, default=DEFAULT_STATE)
+    parser.add_argument(
+        "--env",
+        type=Path,
+        default=DEFAULT_ENV,
+        help="live-mode environment file (default: .env)",
+    )
     parser.add_argument(
         "--keep-state",
         action="store_true",
         help="keep durable state to demonstrate recovery idempotency",
     )
     args = parser.parse_args()
-    result = run_incident(
-        args.fixture,
-        args.state,
-        reset_state=not args.keep_state,
-        env_path=DEFAULT_ENV,
-    )
+    try:
+        if args.mode == "fixture":
+            result = run_incident(
+                args.fixture,
+                args.state,
+                diagnosis_adapter=FixtureDiagnosisAdapter(),
+                diagnosis_mode="fixture",
+                processor_secret=REHEARSAL_PROCESSOR_SECRET,
+                reset_state=not args.keep_state,
+            )
+        else:
+            load_env(args.env)
+            if not os.environ.get("GROQ_API_KEY"):
+                parser.error(
+                    "live mode unavailable: GROQ_API_KEY is missing. "
+                    "Configure it in the selected --env file or use --mode fixture"
+                )
+            result = run_incident(
+                args.fixture,
+                args.state,
+                diagnosis_mode="live",
+                reset_state=not args.keep_state,
+            )
+    except (ModelCallError, DiagnosisError) as exc:
+        parser.error(f"live mode unavailable: {exc}. Configure GROQ_API_KEY in .env or use --mode fixture")
+    except EvidenceError as exc:
+        parser.error(f"incident evidence rejected: {exc}")
     print(_render(result))
 
 
 def _render(result):
-    lines = ["MP-001 | timeout after capture mutation", "", "1. Evidence received"]
+    mode = result.get("diagnosis_mode", "unknown").upper()
+    lines = [
+        "O2 | Financial AI Incident Commander",
+        f"DIAGNOSIS MODE: {mode} / {'REHEARSAL' if mode == 'FIXTURE' else 'GROQ MODEL'}",
+        "",
+        "1. Evidence received",
+    ]
     duplicate_ids = set(result["reconstruction"]["duplicate_evidence_ids"])
     for item in sorted(result["bundle"]["evidence"], key=lambda value: value["received_at"]):
         marker = " [duplicate suppressed]" if item["evidence_id"] in duplicate_ids else ""
@@ -59,11 +103,13 @@ def _render(result):
     lines.extend(
         [
             "",
-            "4. Real evidence-backed diagnosis",
-            f"   provider={provenance['provider']} model={provenance['returned_model']} "
-            f"request_id={provenance['request_id']}",
+            "4. Evidence-backed diagnosis",
+            f"   provider={provenance['provider']} model={provenance.get('returned_model', provenance.get('requested_model'))} "
+            f"request_id={provenance.get('request_id', 'fixture-rehearsal')}",
         ]
     )
+    if provenance.get("usage") is not None:
+        lines.append(f"   usage={json.dumps(provenance['usage'], sort_keys=True)}")
     for hypothesis in result["diagnosis"]["hypotheses"]:
         citations = ", ".join(hypothesis["evidence_ids"])
         lines.append(
@@ -89,8 +135,20 @@ def _render(result):
             "7. Durable state and audit trail",
             f"   {result['state_path']}",
             f"   audit records={len(result['audit_records'])}",
+            "   key events:",
         ]
     )
+    important = {
+        "incident_ingested",
+        "timeline_reconstructed",
+        "diagnosis_validated",
+        "safety_gate_decision",
+        "recovery_completed",
+        "workflow_completed",
+    }
+    for record in result["audit_records"]:
+        if record["event_type"] in important:
+            lines.append(f"      {record['sequence']:>2} {record['event_type']}")
     return "\n".join(lines)
 
 

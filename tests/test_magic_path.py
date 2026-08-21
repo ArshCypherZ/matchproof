@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from incident_commander.audit import AuditTrail
 from incident_commander.diagnosis import DiagnosisError, FixtureDiagnosisAdapter, GroqDiagnosisAdapter, ModelCallError
+from incident_commander import demo
 from incident_commander.evidence import EvidenceError, VerifiedEvidence, _validate_bundle, load_fixture, processor_signature, verify_bundle
 from incident_commander.executor import AuthorizationError, BoundedExecutor
 from incident_commander.reconstruction import reconstruct
@@ -630,6 +631,98 @@ class MagicPathTests(unittest.TestCase):
                 "model_call_started", "model_call_completed", "diagnosis_validated",
                 "safety_gate_decision", "recovery_completed", "workflow_completed",
             }.issubset(event_types))
+
+    def test_fixture_mode_runs_without_groq_and_completes_magic_path(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"GROQ_API_KEY": ""}, clear=False):
+            state = Path(directory) / "fixture.sqlite3"
+            result = run_incident(
+                FIXTURE,
+                state,
+                diagnosis_adapter=FixtureDiagnosisAdapter(),
+                diagnosis_mode="fixture",
+                processor_secret="test-prototype-secret",
+                reset_state=True,
+            )
+            rendered = demo._render(result)
+            self.assertIn("DIAGNOSIS MODE: FIXTURE / REHEARSAL", rendered)
+            self.assertIn("BLOCKED  retry_capture", rendered)
+            self.assertIn("APPROVED reconcile_internal_state", rendered)
+            self.assertIn("durable payment state=captured_verified", rendered)
+            self.assertIn("recovery_completed", rendered)
+            self.assertEqual(IncidentStore(state).payment(self.bundle["payment_id"])["state"], "captured_verified")
+
+    def test_fixture_mode_does_not_attempt_model_network_access(self):
+        with tempfile.TemporaryDirectory() as directory, patch("urllib.request.urlopen") as network:
+            run_incident(
+                FIXTURE,
+                Path(directory) / "fixture.sqlite3",
+                diagnosis_adapter=FixtureDiagnosisAdapter(),
+                diagnosis_mode="fixture",
+                processor_secret="test-prototype-secret",
+            )
+            network.assert_not_called()
+
+    def test_fixture_cli_selects_rehearsal_adapter_without_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "fixture-cli.sqlite3"
+            argv = ["demo", "--mode", "fixture", "--state", str(state)]
+            with patch.dict(os.environ, {}, clear=True), patch(
+                "urllib.request.urlopen"
+            ) as network, patch("sys.argv", argv), patch("builtins.print") as output:
+                demo.main()
+            network.assert_not_called()
+            rendered = output.call_args.args[0]
+            self.assertIn("DIAGNOSIS MODE: FIXTURE / REHEARSAL", rendered)
+            self.assertEqual(
+                IncidentStore(state, processor_secret="test-prototype-secret")
+                .payment(self.bundle["payment_id"])["state"],
+                "captured_verified",
+            )
+
+    def test_live_mode_remains_available_and_records_provenance(self):
+        diagnosis = FixtureDiagnosisAdapter().diagnose(self.bundle, self.reconstruction)["diagnosis"]
+        body = {
+            "id": "chatcmpl-live-test",
+            "model": "openai/gpt-oss-20b",
+            "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(diagnosis)}}],
+            "usage": {"total_tokens": 10},
+        }
+        with tempfile.TemporaryDirectory() as directory, patch("urllib.request.urlopen", return_value=FakeResponse(body)):
+            result = run_incident(
+                FIXTURE,
+                Path(directory) / "live.sqlite3",
+                diagnosis_adapter=GroqDiagnosisAdapter("test-key"),
+                diagnosis_mode="live",
+                processor_secret="test-prototype-secret",
+            )
+            self.assertEqual(result["diagnosis_mode"], "live")
+            self.assertEqual(result["model_provenance"]["request_id"], "chatcmpl-live-test")
+            rendered = demo._render(result)
+            self.assertIn("DIAGNOSIS MODE: LIVE / GROQ MODEL", rendered)
+            self.assertIn("provider=groq model=openai/gpt-oss-20b request_id=chatcmpl-live-test", rendered)
+            self.assertIn('usage={"total_tokens": 10}', rendered)
+
+    def test_live_cli_missing_key_is_clear_and_never_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            empty_env = Path(directory) / "empty.env"
+            empty_env.touch()
+            with patch.dict(os.environ, {}, clear=True), patch(
+                "sys.argv", ["demo", "--mode", "live", "--env", str(empty_env)]
+            ):
+                with self.assertRaises(SystemExit), patch("sys.stderr") as stderr:
+                    demo.main()
+            message = "".join(call.args[0] for call in stderr.write.call_args_list)
+            self.assertIn("live mode unavailable", message)
+            self.assertNotIn("FIXTURE / REHEARSAL", message)
+
+    def test_judge_facing_cli_has_no_stale_mp001_branding(self):
+        self.assertNotIn("mp001", str(demo.DEFAULT_STATE).lower())
+        with patch("sys.argv", ["demo", "--help"]):
+            with self.assertRaises(SystemExit), patch("sys.stdout") as stdout:
+                demo.main()
+        help_text = "".join(call.args[0] for call in stdout.write.call_args_list)
+        self.assertIn("O2 Financial AI Incident Commander", help_text)
+        self.assertNotIn("MP-001", help_text)
 
 
 if __name__ == "__main__":

@@ -9,8 +9,9 @@ from .evidence import verify_bundle
 
 
 class IncidentStore:
-    def __init__(self, path, *, reset=False):
+    def __init__(self, path, *, reset=False, processor_secret=None):
         self.path = Path(path)
+        self.processor_secret = processor_secret
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if reset:
             self.path.unlink(missing_ok=True)
@@ -24,11 +25,11 @@ class IncidentStore:
         return connection
 
     def ingest(self, bundle):
-        verified = verify_bundle(bundle)
+        verified = verify_bundle(bundle, self.processor_secret)
         canonical_json = json.dumps(_json_value(verified.bundle), sort_keys=True)
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            canonical = verify_bundle(json.loads(canonical_json)).bundle
+            canonical = verify_bundle(json.loads(canonical_json), self.processor_secret).bundle
             processor = next(
                 item for item in canonical["evidence"]
                 if item["kind"] == "processor_webhook"
@@ -75,7 +76,7 @@ class IncidentStore:
             for item in value["evidence"]:
                 item["occurred_at"] = _timestamp(item["occurred_at"])
                 item["received_at"] = _timestamp(item["received_at"])
-            return verify_bundle(value).bundle
+            return verify_bundle(value, self.processor_secret).bundle
         finally:
             if owns_connection:
                 connection.close()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .audit import AuditTrail
-from .diagnosis import DiagnosisError, GroqDiagnosisAdapter, ModelCallError, load_env, validate_diagnosis
+from .diagnosis import DiagnosisError, FixtureDiagnosisAdapter, GroqDiagnosisAdapter, ModelCallError, load_env, validate_diagnosis
 from .evidence import EvidenceError, load_fixture
 from .executor import BoundedExecutor
 from .reconstruction import reconstruct
@@ -18,13 +18,15 @@ def run_incident(
     diagnosis_adapter=None,
     reset_state=False,
     env_path=None,
+    processor_secret=None,
+    diagnosis_mode=None,
 ):
     if env_path:
         load_env(env_path)
-    store = IncidentStore(state_path, reset=reset_state)
+    store = IncidentStore(state_path, reset=reset_state, processor_secret=processor_secret)
     audit = AuditTrail(store)
     try:
-        bundle = load_fixture(fixture_path)
+        bundle = load_fixture(fixture_path, processor_secret=processor_secret)
     except EvidenceError as exc:
         audit.append("evidence_rejected", {"reason": str(exc), "mechanism": "prototype_hmac_sha256"})
         raise
@@ -101,6 +103,7 @@ def run_incident(
         "reconstruction": reconstruction,
         "diagnosis": diagnosis,
         "model_provenance": model_result["provenance"],
+        "diagnosis_mode": diagnosis_mode or ("fixture" if adapter.provider == "fixture" else "live"),
         "gate_decisions": gate_decisions,
         "outcome": outcome,
         "payment_state": store.payment(bundle["payment_id"]),
