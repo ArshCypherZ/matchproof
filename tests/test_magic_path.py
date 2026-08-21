@@ -236,6 +236,76 @@ class MagicPathTests(unittest.TestCase):
             verified.bundle["evidence"][2] = {"payload": {"amount_minor": 3}}
         self.assertEqual(payload["amount_minor"], 125000)
 
+    def _assert_invalid_ingestion(self, mutate):
+        changed = deepcopy(self.bundle)
+        webhook = next(item for item in changed["evidence"] if item["kind"] == "processor_webhook")
+        mutate(webhook["payload"])
+        webhook["processor_signature"] = processor_signature(webhook["payload"], "test-prototype-secret")
+        with tempfile.TemporaryDirectory() as directory:
+            store = IncidentStore(Path(directory) / "incident.sqlite3")
+            with self.assertRaises(EvidenceError):
+                store.ingest(changed)
+            self.assertIsNone(store.payment(self.bundle["payment_id"]))
+            with store.connect() as connection:
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM recoveries").fetchone()[0], 0)
+            with store.connect() as connection:
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM recoveries").fetchone()[0], 0)
+
+    def test_rejects_boolean_amount_minor(self):
+        self._assert_invalid_ingestion(lambda payload: payload.__setitem__("amount_minor", True))
+
+    def test_rejects_string_amount_minor(self):
+        self._assert_invalid_ingestion(lambda payload: payload.__setitem__("amount_minor", "1"))
+
+    def test_rejects_negative_amount_minor(self):
+        self._assert_invalid_ingestion(lambda payload: payload.__setitem__("amount_minor", -1))
+
+    def test_rejects_invalid_currency(self):
+        self._assert_invalid_ingestion(lambda payload: payload.__setitem__("currency", "usd"))
+
+    def test_rejects_invalid_operation(self):
+        changed = deepcopy(self.bundle)
+        request = next(item for item in changed["evidence"] if item["kind"] == "payment_request")
+        request["payload"]["operation"] = "refund"
+        with tempfile.TemporaryDirectory() as directory:
+            store = IncidentStore(Path(directory) / "incident.sqlite3")
+            with self.assertRaises(EvidenceError):
+                store.ingest(changed)
+            self.assertIsNone(store.payment(self.bundle["payment_id"]))
+            with store.connect() as connection:
+                self.assertEqual(connection.execute("SELECT COUNT(*) FROM recoveries").fetchone()[0], 0)
+
+    def test_rejects_invalid_payment_id(self):
+        self._assert_invalid_ingestion(lambda payload: payload.__setitem__("payment_id", "123"))
+
+    def test_rejects_invalid_idempotency_identity(self):
+        self._assert_invalid_ingestion(lambda payload: payload.__setitem__("idempotency_key", "?"))
+
+    def test_rejects_conflicting_financial_identity(self):
+        changed = deepcopy(self.bundle)
+        request = next(item for item in changed["evidence"] if item["kind"] == "payment_request")
+        request["payload"]["amount_minor"] = 7
+        with tempfile.TemporaryDirectory() as directory:
+            store = IncidentStore(Path(directory) / "incident.sqlite3")
+            with self.assertRaises(EvidenceError):
+                store.ingest(changed)
+            self.assertIsNone(store.payment(self.bundle["payment_id"]))
+
+    def test_authenticated_but_semantically_invalid_payload_cannot_persist(self):
+        for invalid in (True, "1", -1):
+            with self.subTest(amount=invalid):
+                changed = deepcopy(self.bundle)
+                webhook = next(item for item in changed["evidence"] if item["kind"] == "processor_webhook")
+                webhook["payload"]["amount_minor"] = invalid
+                webhook["processor_signature"] = processor_signature(webhook["payload"], "test-prototype-secret")
+                with tempfile.TemporaryDirectory() as directory:
+                    store = IncidentStore(Path(directory) / "incident.sqlite3")
+                    with self.assertRaises(EvidenceError):
+                        store.ingest(changed)
+                    self.assertIsNone(store.payment(self.bundle["payment_id"]))
+                    with store.connect() as connection:
+                        self.assertEqual(connection.execute("SELECT COUNT(*) FROM recoveries").fetchone()[0], 0)
+
     def test_registry_injection_cannot_mutate_payment(self):
         import incident_commander.evidence as evidence_module
         with tempfile.TemporaryDirectory() as directory:
