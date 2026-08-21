@@ -312,7 +312,8 @@ def _nonempty_text(value, key):
 def _json_value(value):
     if isinstance(value, datetime):
         return value.isoformat().replace("+00:00", "Z")
-    if isinstance(value, dict):
+    from collections.abc import Mapping
+    if isinstance(value, Mapping):
         return {key: _json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_json_value(item) for item in value]

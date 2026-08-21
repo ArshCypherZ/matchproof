@@ -7,23 +7,29 @@ import os
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import MappingProxyType
+from collections.abc import Mapping
 
 
 class EvidenceError(ValueError):
     pass
 
 
-_VERIFICATION_MARKER = object()
+_VERIFIED_OBJECTS = set()
 
 
 class VerifiedEvidence:
-    __slots__ = ("bundle", "_marker")
+    __slots__ = ("_bundle",)
 
-    def __init__(self, bundle, marker=None):
-        if marker is not _VERIFICATION_MARKER:
-            raise EvidenceError("verified evidence must be created by verification")
-        self.bundle = bundle
-        self._marker = marker
+    def __new__(cls, *args, **kwargs):
+        raise EvidenceError("verified evidence must be produced by verify_bundle")
+
+    @property
+    def bundle(self):
+        return self._bundle
+
+    def __setattr__(self, name, value):
+        raise AttributeError("verified evidence is immutable")
 
 
 def _timestamp(value: str) -> datetime:
@@ -48,7 +54,24 @@ def verify_bundle(bundle, processor_secret=None):
         item["occurred_at"] = _timestamp(item["occurred_at"]) if isinstance(item["occurred_at"], str) else item["occurred_at"]
         item["received_at"] = _timestamp(item["received_at"]) if isinstance(item["received_at"], str) else item["received_at"]
     _validate_bundle(candidate, processor_secret or os.environ.get("PROCESSOR_WEBHOOK_SECRET"))
-    return VerifiedEvidence(candidate, _VERIFICATION_MARKER)
+    verified = object.__new__(VerifiedEvidence)
+    object.__setattr__(verified, "_bundle", _freeze(candidate))
+    _VERIFIED_OBJECTS.add(verified)
+    return verified
+
+
+def is_verified_evidence(value):
+    return isinstance(value, VerifiedEvidence) and value in _VERIFIED_OBJECTS
+
+
+def _freeze(value):
+    if isinstance(value, dict):
+        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, tuple):
+        return tuple(_freeze(item) for item in value)
+    return value
 
 
 def _validate_bundle(bundle, processor_secret):

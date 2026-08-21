@@ -5,7 +5,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .evidence import VerifiedEvidence, _VERIFICATION_MARKER, verify_bundle
+from .evidence import is_verified_evidence, verify_bundle
 
 
 class IncidentStore:
@@ -24,8 +24,8 @@ class IncidentStore:
         return connection
 
     def seed_payment(self, bundle):
-        if not isinstance(bundle, VerifiedEvidence) or bundle._marker is not _VERIFICATION_MARKER:
-            bundle = verify_bundle(bundle)
+        if not is_verified_evidence(bundle):
+            raise ValueError("seed_payment requires verifier-produced canonical evidence")
         bundle_value = bundle.bundle
         internal = next(
             item for item in bundle_value["evidence"] if item["kind"] == "internal_state"
@@ -51,7 +51,7 @@ class IncidentStore:
         self.save_evidence(bundle)
 
     def save_evidence(self, bundle):
-        if not isinstance(bundle, VerifiedEvidence) or bundle._marker is not _VERIFICATION_MARKER:
+        if not is_verified_evidence(bundle):
             raise ValueError("save_evidence is internal; use verified ingestion")
         value = bundle.bundle
         with self.connect() as connection:
@@ -61,7 +61,7 @@ class IncidentStore:
             )
 
     def ingest_verified(self, verified):
-        if not isinstance(verified, VerifiedEvidence) or verified._marker is not _VERIFICATION_MARKER:
+        if not is_verified_evidence(verified):
             raise ValueError("canonical evidence requires verified ingestion")
         self.seed_payment(verified)
 
@@ -170,7 +170,8 @@ def _now():
 def _json_value(value):
     if isinstance(value, datetime):
         return value.isoformat().replace("+00:00", "Z")
-    if isinstance(value, dict):
+    from collections.abc import Mapping
+    if isinstance(value, Mapping):
         return {key: _json_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_json_value(item) for item in value]
