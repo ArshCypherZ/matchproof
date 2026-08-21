@@ -5,7 +5,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .evidence import is_verified_evidence, verify_bundle
+from .evidence import verify_bundle
 
 
 class IncidentStore:
@@ -23,14 +23,17 @@ class IncidentStore:
         connection.execute("PRAGMA busy_timeout=10000")
         return connection
 
-    def seed_payment(self, bundle):
-        if not is_verified_evidence(bundle):
-            raise ValueError("seed_payment requires verifier-produced canonical evidence")
-        bundle_value = bundle.bundle
-        internal = next(
-            item for item in bundle_value["evidence"] if item["kind"] == "internal_state"
-        )["payload"]
+    def ingest(self, bundle):
+        verified = verify_bundle(bundle)
+        canonical_json = json.dumps(_json_value(verified.bundle), sort_keys=True)
         with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            canonical = verify_bundle(json.loads(canonical_json)).bundle
+            processor = next(
+                item for item in canonical["evidence"]
+                if item["kind"] == "processor_webhook"
+                and item["payload"].get("event_type") == "payment.captured"
+            )["payload"]
             connection.execute(
                 """
                 INSERT OR IGNORE INTO payments
@@ -39,31 +42,26 @@ class IncidentStore:
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    internal["payment_id"],
-                    internal["payment_state"],
-                    internal["amount_minor"],
-                    internal["currency"],
-                    internal["operation"],
-                    internal["last_operation_key"],
+                    processor["payment_id"],
+                    "capture_pending",
+                    processor["amount_minor"],
+                    processor["currency"],
+                    "capture",
+                    processor["idempotency_key"],
                     _now(),
                 ),
             )
-        self.save_evidence(bundle)
-
-    def save_evidence(self, bundle):
-        if not is_verified_evidence(bundle):
-            raise ValueError("save_evidence is internal; use verified ingestion")
-        value = bundle.bundle
-        with self.connect() as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO incidents (incident_id, payment_id, idempotency_key, bundle) VALUES (?, ?, ?, ?)",
-                (value["incident_id"], value["payment_id"], value["idempotency_key"], json.dumps(_json_value(value), sort_keys=True)),
+                (canonical["incident_id"], canonical["payment_id"], canonical["idempotency_key"], canonical_json),
             )
+            connection.commit()
+
+    def save_evidence(self, bundle):
+        raise ValueError("save_evidence cannot create canonical evidence; use ingest")
 
     def ingest_verified(self, verified):
-        if not is_verified_evidence(verified):
-            raise ValueError("canonical evidence requires verified ingestion")
-        self.seed_payment(verified)
+        raise ValueError("verified Python objects have no durable financial authority")
 
     def incident(self, incident_id, connection=None):
         owns_connection = connection is None

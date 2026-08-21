@@ -210,7 +210,7 @@ class MagicPathTests(unittest.TestCase):
                 attack()
         with tempfile.TemporaryDirectory() as directory:
             store = IncidentStore(Path(directory) / "incident.sqlite3")
-            store.ingest_verified(verified)
+            store.ingest(self.bundle)
             payment = store.payment(self.bundle["payment_id"])
             self.assertEqual(payment["state"], "capture_pending")
             self.assertEqual(payment["amount_minor"], 125000)
@@ -236,11 +236,59 @@ class MagicPathTests(unittest.TestCase):
             verified.bundle["evidence"][2] = {"payload": {"amount_minor": 3}}
         self.assertEqual(payload["amount_minor"], 125000)
 
+    def test_registry_injection_cannot_mutate_payment(self):
+        import incident_commander.evidence as evidence_module
+        with tempfile.TemporaryDirectory() as directory:
+            store = IncidentStore(Path(directory) / "incident.sqlite3")
+            store.ingest(self.bundle)
+            forged = object.__new__(VerifiedEvidence)
+            attacker = deepcopy(self.bundle)
+            internal = next(item for item in attacker["evidence"] if item["kind"] == "internal_state")["payload"]
+            internal["payment_state"] = "captured_verified"
+            internal["amount_minor"] = 9
+            object.__setattr__(forged, "_bundle", attacker)
+            registry = getattr(evidence_module, "_VERIFIED_OBJECTS", set())
+            registry.add(forged)
+            with self.assertRaises(ValueError):
+                store.ingest_verified(forged)
+            payment = store.payment(self.bundle["payment_id"])
+            self.assertEqual(payment["state"], "capture_pending")
+            self.assertEqual(payment["amount_minor"], 125000)
+
+    def test_low_level_verified_object_mutation_cannot_mutate_payment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = IncidentStore(Path(directory) / "incident.sqlite3")
+            store.ingest(self.bundle)
+            verified = verify_bundle(self.bundle)
+            attacker = deepcopy(self.bundle)
+            internal = next(item for item in attacker["evidence"] if item["kind"] == "internal_state")["payload"]
+            internal["payment_state"] = "captured_verified"
+            internal["amount_minor"] = 7
+            object.__setattr__(verified, "_bundle", attacker)
+            with self.assertRaises(ValueError):
+                store.ingest_verified(verified)
+            payment = store.payment(self.bundle["payment_id"])
+            self.assertEqual(payment["state"], "capture_pending")
+            self.assertEqual(payment["amount_minor"], 125000)
+
+    def test_private_bundle_replacement_cannot_mutate_payment(self):
+        self.test_low_level_verified_object_mutation_cannot_mutate_payment()
+
+    def test_object_identity_cannot_authorize_durable_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = IncidentStore(Path(directory) / "incident.sqlite3")
+            store.ingest(self.bundle)
+            verified = verify_bundle(self.bundle)
+            with self.assertRaises(ValueError):
+                store.ingest_verified(verified)
+            payment = store.payment(self.bundle["payment_id"])
+            self.assertEqual((payment["state"], payment["amount_minor"]), ("capture_pending", 125000))
+
     def test_executor_rejects_fake_suppressed_and_cross_incident_citations(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "incident.sqlite3"
             store = IncidentStore(path)
-            store.ingest_verified(verify_bundle(self.bundle))
+            store.ingest(self.bundle)
             executor = BoundedExecutor(store, AuditTrail(store))
             for citation in (["EV-FAKE-999"], ["EV-WEBHOOK-002"], ["EV-OTHER-001"]):
                 recommendation = self.recommendation()
@@ -254,7 +302,7 @@ class MagicPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "incident.sqlite3"
             store = IncidentStore(path)
-            store.ingest_verified(verify_bundle(self.bundle))
+            store.ingest(self.bundle)
             with store.connect() as connection:
                 row = connection.execute("SELECT bundle FROM incidents WHERE incident_id = ?", (self.bundle["incident_id"],)).fetchone()
                 value = json.loads(row[0])
@@ -318,7 +366,7 @@ class MagicPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "incident.sqlite3"
             store = IncidentStore(path)
-            store.ingest_verified(verify_bundle(self.bundle))
+            store.ingest(self.bundle)
             key = "reconcile_internal_state:inc_timeout_after_capture_001:pay_demo_001:capture-order-demo-001"
             with store.connect() as connection:
                 connection.execute("INSERT INTO recoveries VALUES (?, ?, ?, ?, ?, ?)", (key, "reconcile_internal_state", "reconciled", "capture_pending", "captured_verified", "now"))
@@ -329,7 +377,7 @@ class MagicPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "incident.sqlite3"
             store = IncidentStore(path)
-            store.ingest_verified(verify_bundle(self.bundle))
+            store.ingest(self.bundle)
             executor = BoundedExecutor(store, AuditTrail(store))
             recommendation = self.recommendation()
             decision = evaluate(recommendation, self.bundle, self.reconstruction)
@@ -373,7 +421,7 @@ class MagicPathTests(unittest.TestCase):
     def test_forged_retry_authorization_is_rejected_by_executor(self):
         with tempfile.TemporaryDirectory() as directory:
             store = IncidentStore(Path(directory) / "incident.sqlite3")
-            store.ingest_verified(verify_bundle(self.bundle))
+            store.ingest(self.bundle)
             executor = BoundedExecutor(store, AuditTrail(store))
             forged = {"action": "retry_capture", "allowed": True, "reason": "forged", "evidence_ids": []}
             with self.assertRaises(AuthorizationError):
@@ -388,7 +436,7 @@ class MagicPathTests(unittest.TestCase):
                     item["payload"]["currency"] = "USD"
             reconstruction = reconstruct(changed)
             store = IncidentStore(Path(directory) / "incident.sqlite3")
-            store.ingest_verified(verify_bundle(self.bundle))
+            store.ingest(self.bundle)
             executor = BoundedExecutor(store, AuditTrail(store))
             forged = {"action": "reconcile_internal_state", "allowed": True, "reason": "forged", "evidence_ids": self.recommendation()["evidence_ids"]}
             with self.assertRaisesRegex(AuthorizationError, "contradicts"):
@@ -406,7 +454,7 @@ class MagicPathTests(unittest.TestCase):
     def test_concurrent_recovery_has_one_logical_completion(self):
         with tempfile.TemporaryDirectory() as directory:
             store = IncidentStore(Path(directory) / "incident.sqlite3")
-            store.ingest_verified(verify_bundle(self.bundle))
+            store.ingest(self.bundle)
             recommendation = self.recommendation()
             decision = evaluate(recommendation, self.bundle, self.reconstruction)
             barrier = threading.Barrier(3)

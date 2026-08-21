@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .audit import AuditTrail
 from .diagnosis import DiagnosisError, GroqDiagnosisAdapter, ModelCallError, load_env, validate_diagnosis
-from .evidence import EvidenceError, load_fixture, verify_bundle
+from .evidence import EvidenceError, load_fixture
 from .executor import BoundedExecutor
 from .reconstruction import reconstruct
 from .safety import evaluate
@@ -28,9 +28,8 @@ def run_incident(
     except EvidenceError as exc:
         audit.append("evidence_rejected", {"reason": str(exc), "mechanism": "prototype_hmac_sha256"})
         raise
-    verified = verify_bundle(bundle)
-    bundle = verified.bundle
-    store.ingest_verified(verified)
+    store.ingest(bundle)
+    bundle = store.incident(bundle["incident_id"])
     audit.append("incident_ingested", bundle)
 
     reconstruction = reconstruct(bundle)

@@ -15,9 +15,6 @@ class EvidenceError(ValueError):
     pass
 
 
-_VERIFIED_OBJECTS = set()
-
-
 class VerifiedEvidence:
     __slots__ = ("_bundle",)
 
@@ -56,12 +53,7 @@ def verify_bundle(bundle, processor_secret=None):
     _validate_bundle(candidate, processor_secret or os.environ.get("PROCESSOR_WEBHOOK_SECRET"))
     verified = object.__new__(VerifiedEvidence)
     object.__setattr__(verified, "_bundle", _freeze(candidate))
-    _VERIFIED_OBJECTS.add(verified)
     return verified
-
-
-def is_verified_evidence(value):
-    return isinstance(value, VerifiedEvidence) and value in _VERIFIED_OBJECTS
 
 
 def _freeze(value):
