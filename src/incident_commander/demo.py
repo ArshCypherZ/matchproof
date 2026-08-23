@@ -130,6 +130,10 @@ def _render(result):
             f"   {result['outcome']['status']}: {result['outcome']['before_state']} -> "
             f"{result['outcome']['after_state']}",
             f"   durable payment state={result['payment_state']['state']}",
+            f"   amount_minor={result['payment_state']['amount_minor']} "
+            f"currency={result['payment_state']['currency']}",
+            f"   operation={result['payment_state']['operation']} "
+            f"operation_key={result['payment_state']['operation_key']}",
             "   No financial API was called; the merchant-side record was reconciled.",
             "",
             "7. Durable state and audit trail",

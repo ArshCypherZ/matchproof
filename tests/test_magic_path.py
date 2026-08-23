@@ -651,6 +651,25 @@ class MagicPathTests(unittest.TestCase):
             self.assertIn("recovery_completed", rendered)
             self.assertEqual(IncidentStore(state).payment(self.bundle["payment_id"])["state"], "captured_verified")
 
+    def test_fixture_output_renders_durable_payment_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = run_incident(
+                FIXTURE,
+                Path(directory) / "fixture.sqlite3",
+                diagnosis_adapter=FixtureDiagnosisAdapter(),
+                diagnosis_mode="fixture",
+                processor_secret="test-prototype-secret",
+                reset_state=True,
+            )
+            rendered = demo._render(result)
+            self.assertIn("amount_minor=125000", rendered)
+            self.assertIn("currency=INR", rendered)
+            self.assertIn("operation=capture", rendered)
+            self.assertIn("operation_key=capture-order-demo-001", rendered)
+            self.assertIn("BLOCKED  retry_capture", rendered)
+            self.assertIn("APPROVED reconcile_internal_state", rendered)
+            self.assertIn("captured_verified", rendered)
+
     def test_fixture_mode_does_not_attempt_model_network_access(self):
         with tempfile.TemporaryDirectory() as directory, patch("urllib.request.urlopen") as network:
             run_incident(
