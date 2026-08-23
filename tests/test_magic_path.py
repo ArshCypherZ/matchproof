@@ -670,6 +670,35 @@ class MagicPathTests(unittest.TestCase):
             self.assertIn("APPROVED reconcile_internal_state", rendered)
             self.assertIn("captured_verified", rendered)
 
+    def test_fixture_output_follows_five_minute_demo_story(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = run_incident(
+                FIXTURE,
+                Path(directory) / "fixture.sqlite3",
+                diagnosis_adapter=FixtureDiagnosisAdapter(),
+                diagnosis_mode="fixture",
+                processor_secret="test-prototype-secret",
+                reset_state=True,
+            )
+            rendered = demo._render(result)
+            headings = [
+                "INCIDENT",
+                "EVIDENCE (received order)",
+                "TIMELINE (canonical event time)",
+                "DIAGNOSIS (evidence-grounded, advisory)",
+                "SAFETY DECISION (deterministic authority)",
+                "DURABLE OUTCOME",
+                "AUDIT",
+                "TAKEAWAY",
+            ]
+            positions = [rendered.index(heading) for heading in headings]
+            self.assertEqual(positions, sorted(positions))
+            self.assertIn("[duplicate suppressed]", rendered)
+            self.assertIn("[late arrival]", rendered)
+            self.assertIn("ambiguous_after_timeout", rendered)
+            self.assertIn("AI explains the incident.", rendered)
+            self.assertIn("Recovery is bounded, durable, and auditable.", rendered)
+
     def test_fixture_mode_does_not_attempt_model_network_access(self):
         with tempfile.TemporaryDirectory() as directory, patch("urllib.request.urlopen") as network:
             run_incident(

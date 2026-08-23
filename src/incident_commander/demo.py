@@ -75,7 +75,11 @@ def _render(result):
         "O2 | Financial AI Incident Commander",
         f"DIAGNOSIS MODE: {mode} / {'REHEARSAL' if mode == 'FIXTURE' else 'GROQ MODEL'}",
         "",
-        "1. Evidence received",
+        "INCIDENT",
+        f"   payment={result['bundle']['payment_id']}",
+        "   Capture timed out after the processor mutation; merchant state remained pending.",
+        "",
+        "EVIDENCE (received order)",
     ]
     duplicate_ids = set(result["reconstruction"]["duplicate_evidence_ids"])
     for item in sorted(result["bundle"]["evidence"], key=lambda value: value["received_at"]):
@@ -85,14 +89,14 @@ def _render(result):
             f"received={_time(item['received_at'])}{marker}"
         )
 
-    lines.extend(["", "2. Canonical timeline (event time, not arrival time)"])
+    lines.extend(["", "TIMELINE (canonical event time)"])
     for item in result["reconstruction"]["timeline"]:
         late = " [late arrival]" if item["kind"] == "processor_webhook" else ""
         lines.append(
             f"   {_time(item['occurred_at'])}  {item['evidence_id']:<16} {item['kind']}{late}"
         )
 
-    lines.extend(["", "3. Deterministic state reconstruction"])
+    lines.append("   State reconstruction:")
     for transition in result["reconstruction"]["observation_transitions"]:
         lines.append(
             f"   {_time(transition['observed_at'])}  {transition['state']}: "
@@ -103,7 +107,7 @@ def _render(result):
     lines.extend(
         [
             "",
-            "4. Evidence-backed diagnosis",
+            "DIAGNOSIS (evidence-grounded, advisory)",
             f"   provider={provenance['provider']} model={provenance.get('returned_model', provenance.get('requested_model'))} "
             f"request_id={provenance.get('request_id', 'fixture-rehearsal')}",
         ]
@@ -118,7 +122,7 @@ def _render(result):
         )
         lines.append(f"      uncertainty: {hypothesis['uncertainty']}")
 
-    lines.extend(["", "5. Deterministic safety gate"])
+    lines.extend(["", "SAFETY DECISION (deterministic authority)"])
     for decision in result["gate_decisions"]:
         verdict = "APPROVED" if decision["allowed"] else "BLOCKED"
         lines.append(f"   {verdict:<8} {decision['action']}: {decision['reason']}")
@@ -126,7 +130,7 @@ def _render(result):
     lines.extend(
         [
             "",
-            "6. Bounded durable outcome",
+            "DURABLE OUTCOME",
             f"   {result['outcome']['status']}: {result['outcome']['before_state']} -> "
             f"{result['outcome']['after_state']}",
             f"   durable payment state={result['payment_state']['state']}",
@@ -134,9 +138,9 @@ def _render(result):
             f"currency={result['payment_state']['currency']}",
             f"   operation={result['payment_state']['operation']} "
             f"operation_key={result['payment_state']['operation_key']}",
-            "   No financial API was called; the merchant-side record was reconciled.",
+            "   Recovery scope: merchant-side record reconciliation.",
             "",
-            "7. Durable state and audit trail",
+            "AUDIT",
             f"   {result['state_path']}",
             f"   audit records={len(result['audit_records'])}",
             "   key events:",
@@ -153,6 +157,14 @@ def _render(result):
     for record in result["audit_records"]:
         if record["event_type"] in important:
             lines.append(f"      {record['sequence']:>2} {record['event_type']}")
+    lines.extend(
+        [
+            "",
+            "TAKEAWAY",
+            "   AI explains the incident. Deterministic controls authorize the safe action.",
+            "   Recovery is bounded, durable, and auditable.",
+        ]
+    )
     return "\n".join(lines)
 
 

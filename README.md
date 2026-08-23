@@ -1,23 +1,32 @@
-# O2 Financial AI Incident Commander
+# O2 — Financial AI Incident Commander
+
+O2 reconstructs an ambiguous payment incident, adds an evidence-grounded AI
+diagnosis, and lets deterministic controls authorize a bounded, auditable
+merchant-state reconciliation.
 
 ## Prerequisites
 
 - Python 3.10+
 - Run commands from the repository root with `PYTHONPATH=src`.
 
-## Fixture rehearsal (no network)
+## Offline fixture rehearsal
 
 ```bash
 PYTHONPATH=src python3 -m incident_commander.demo --mode fixture
 ```
 
-This uses the checked-in timeout-after-mutation fixture, a local SQLite file under
-`.runtime/`, and the fixture diagnosis adapter. It does not require `GROQ_API_KEY`
-and does not call a model. The output is labeled `FIXTURE / REHEARSAL` and shows the
-blocked `retry_capture`, approved bounded reconciliation, final `captured_verified`
-state, and key audit events.
+The run uses the checked-in timeout-after-mutation fixture, a disposable local
+SQLite state file, and the fixture diagnosis adapter. It runs offline and without
+`GROQ_API_KEY`; the output is labeled `FIXTURE / REHEARSAL`.
 
-## Live Groq diagnosis
+## Fixture and live modes
+
+- **Fixture:** deterministic local rehearsal, labeled `FIXTURE / REHEARSAL`.
+- **Live:** Groq model path with configured credentials and network access; output
+  includes provider, model, request, and usage provenance. A live error is reported
+  as an error.
+
+## Optional live Groq diagnosis
 
 Create an ignored `.env` file (or export the variables) with:
 
@@ -35,13 +44,5 @@ Run:
 PYTHONPATH=src python3 -m incident_commander.demo --mode live
 ```
 
-To verify the fail-closed missing-key behavior explicitly, point `--env` at an
-empty file:
-
-```bash
-PYTHONPATH=src python3 -m incident_commander.demo --mode live --env /tmp/empty-o2.env
-```
-
 Live output includes the actual Groq provider, model, request ID, and usage
-provenance. If Groq is unavailable, live mode reports an actionable error and
-never falls back to fixture output.
+provenance. An unavailable Groq connection produces an actionable error.
