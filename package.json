@@ -1,0 +1,47 @@
+{
+  "name": "razorpay-incident-commander",
+  "version": "1.0.0",
+  "description": "O2 reconstructs an ambiguous payment incident, adds an evidence-grounded AI diagnosis, and lets deterministic controls authorize a bounded, auditable merchant-state reconciliation.",
+  "private": true,
+  "packageManager": "pnpm@11.23.0+sha512.f00082e5b283a199b74e079da28d155c008fe232f44c8a06ea7ddfa014ecf719fc362f790ecc67b28106ddac2afb24c49a9a079159da560b2ce7d1e98efd11af",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write src tests apps",
+    "format:check": "prettier --check src tests apps",
+    "lint": "eslint src tests",
+    "razorpay:verify": "tsx src/incident_commander/verify-razorpay.ts",
+    "razorpay:webhook-server": "tsx src/incident_commander/webhook-server.ts",
+    "demo": "tsx src/incident_commander/demo.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "dev": "pnpm --dir apps/web dev",
+    "build": "pnpm --dir apps/web build"
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.23.0",
+    "razorpay": "^2.9.8",
+    "tsx": "^4.23.12",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^10.9.0",
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

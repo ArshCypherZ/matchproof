@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: incident
+      POSTGRES_PASSWORD: incident
+      POSTGRES_DB: incident_commander
+    ports:
+      - "9998:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U incident -d incident_commander"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres_data:
