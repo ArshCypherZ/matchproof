@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787566133914,
+      "tag": "0000_furry_sunset_bain",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787567134031,
+      "tag": "0001_cultured_ma_gnuci",
+      "breakpoints": true
+    }
+  ]
+}

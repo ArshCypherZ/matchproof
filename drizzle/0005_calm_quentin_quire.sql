@@ -1,0 +1,3 @@
+ALTER TABLE "incident_progress" ADD CONSTRAINT "incident_progress_incident_id_incidents_incident_id_fk" FOREIGN KEY ("incident_id") REFERENCES "public"."incidents"("incident_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "incidents" ADD CONSTRAINT "incidents_payment_id_payments_payment_id_fk" FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("payment_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "razorpay_webhook_events" ADD CONSTRAINT "webhook_incident_id_incidents_incident_id_fk" FOREIGN KEY ("incident_id") REFERENCES "public"."incidents"("incident_id") ON DELETE no action ON UPDATE no action;

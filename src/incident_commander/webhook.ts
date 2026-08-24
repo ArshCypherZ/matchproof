@@ -37,18 +37,45 @@ function rawText(rawBody: string | Buffer) {
 export class RazorpayWebhookInbox {
   constructor(readonly store: import("./core").IncidentStore) {}
 
-  async ingest(input: RazorpayWebhookIngestInput): Promise<RazorpayWebhookIngestResult> {
+  async ingest(
+    input: RazorpayWebhookIngestInput,
+  ): Promise<RazorpayWebhookIngestResult> {
     assertEventId(input.eventId);
     const body = rawText(input.rawBody);
-    const event = parseVerifiedRazorpayWebhook(body, input.signature, input.webhookSecret);
+    const event = parseVerifiedRazorpayWebhook(
+      body,
+      input.signature,
+      input.webhookSecret,
+    );
     const eventType = String(event.event);
     const receivedAt = input.receivedAt ?? new Date().toISOString();
-    const parsed = event as { payload?: { payment?: { entity?: { id?: string } } } };
+    const parsed = event as {
+      payload?: { payment?: { entity?: { id?: string } } };
+    };
     const paymentId = parsed.payload?.payment?.entity?.id;
-    try { return await this.store.ingestWebhook({ eventId: input.eventId, eventType, signature: input.signature, body, receivedAt, ...(paymentId ? { paymentId } : {}) }); } catch (error) { if (error instanceof Error && error.message.includes("different evidence")) throw new RazorpayWebhookConflictError(error.message); throw error; }
+    try {
+      return await this.store.ingestWebhook({
+        eventId: input.eventId,
+        eventType,
+        signature: input.signature,
+        body,
+        receivedAt,
+        ...(paymentId ? { paymentId } : {}),
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("different evidence")
+      )
+        throw new RazorpayWebhookConflictError(error.message);
+      throw error;
+    }
   }
 
-  get(eventId: string) { assertEventId(eventId); return this.store.webhookEvent(eventId); }
+  get(eventId: string) {
+    assertEventId(eventId);
+    return this.store.webhookEvent(eventId);
+  }
 }
 
 export function createRazorpayWebhookServer(
@@ -83,7 +110,23 @@ export function createRazorpayWebhookServer(
             ? { webhookSecret: options.webhookSecret }
             : {}),
         };
-        void inbox.ingest(input).then((result) => { response.writeHead(200, { "content-type": "application/json" }); response.end(JSON.stringify(result)); }).catch((error) => { const status = error instanceof RazorpayWebhookConflictError ? 409 : 400; response.writeHead(status, { "content-type": "application/json" }); response.end(JSON.stringify({ error: error instanceof Error ? error.message : "webhook_rejected" })); });
+        void inbox
+          .ingest(input)
+          .then((result) => {
+            response.writeHead(200, { "content-type": "application/json" });
+            response.end(JSON.stringify(result));
+          })
+          .catch((error) => {
+            const status =
+              error instanceof RazorpayWebhookConflictError ? 409 : 400;
+            response.writeHead(status, { "content-type": "application/json" });
+            response.end(
+              JSON.stringify({
+                error:
+                  error instanceof Error ? error.message : "webhook_rejected",
+              }),
+            );
+          });
       } catch (error) {
         const status =
           error instanceof RazorpayWebhookConflictError ? 409 : 400;

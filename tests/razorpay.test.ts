@@ -1,10 +1,156 @@
 import { describe, expect, it } from "vitest";
 import crypto from "node:crypto";
-import { createTestModeClient, createTestModeOrder, fetchTestModeOrder, fetchTestModeOrderStatus, fetchTestModeOrderPayments, fetchTestModePayment, fetchTestModePaymentStatus, RazorpayConfigurationError, RazorpayInputError, RazorpayWebhookVerificationError, parseVerifiedRazorpayWebhook, verifyRazorpayWebhookSignature } from "../src/incident_commander/razorpay";
-function fakeClient() { const calls: Array<[string, unknown]> = []; const client = { orders: { create: async (input: unknown) => { calls.push(["orders.create", input]); return { id: "order_test_1", ...(input as object) }; }, fetch: async (id: string) => { calls.push(["orders.fetch", id]); return { id, status: "paid", amount: 12500, amount_paid: 12500, amount_due: 0, currency: "INR", attempts: 1 }; }, fetchPayments: async (id: string) => { calls.push(["orders.fetchPayments", id]); return { count: 1, items: [{ id: "pay_test_1", order_id: id }] }; } }, payments: { fetch: async (id: string) => { calls.push(["payments.fetch", id]); return { id, status: "captured", captured: true, amount: 12500, currency: "INR", order_id: "order_test_1", amount_refunded: 0, refund_status: null, error_code: null, error_description: null }; }, all: async () => ({ items: [] }) } }; return { client: client as any, calls }; }
+import {
+  createTestModeClient,
+  createTestModeOrder,
+  fetchTestModeOrder,
+  fetchTestModeOrderStatus,
+  fetchTestModeOrderPayments,
+  fetchTestModePayment,
+  fetchTestModePaymentStatus,
+  RazorpayConfigurationError,
+  RazorpayInputError,
+  RazorpayWebhookVerificationError,
+  parseVerifiedRazorpayWebhook,
+  verifyRazorpayWebhookSignature,
+} from "../src/incident_commander/razorpay";
+function fakeClient() {
+  const calls: Array<[string, unknown]> = [];
+  const client = {
+    orders: {
+      create: async (input: unknown) => {
+        calls.push(["orders.create", input]);
+        return { id: "order_test_1", ...(input as object) };
+      },
+      fetch: async (id: string) => {
+        calls.push(["orders.fetch", id]);
+        return {
+          id,
+          status: "paid",
+          amount: 12500,
+          amount_paid: 12500,
+          amount_due: 0,
+          currency: "INR",
+          attempts: 1,
+        };
+      },
+      fetchPayments: async (id: string) => {
+        calls.push(["orders.fetchPayments", id]);
+        return { count: 1, items: [{ id: "pay_test_1", order_id: id }] };
+      },
+    },
+    payments: {
+      fetch: async (id: string) => {
+        calls.push(["payments.fetch", id]);
+        return {
+          id,
+          status: "captured",
+          captured: true,
+          amount: 12500,
+          currency: "INR",
+          order_id: "order_test_1",
+          amount_refunded: 0,
+          refund_status: null,
+          error_code: null,
+          error_description: null,
+        };
+      },
+      all: async () => ({ items: [] }),
+    },
+  };
+  return { client: client as any, calls };
+}
 describe("razorpay", () => {
-  it("accepts test credentials", () => { expect(() => createTestModeClient({ RAZORPAY_API_KEY: "rzp_test_example", RAZORPAY_API_SECRET: "example-secret" } as unknown as NodeJS.ProcessEnv)).not.toThrow(); expect(() => createTestModeClient({ RAZORPAY_API_KEY: "rzp_live_example", RAZORPAY_API_SECRET: "example-secret" } as unknown as NodeJS.ProcessEnv)).toThrow(RazorpayConfigurationError); expect(() => createTestModeClient({} as unknown as NodeJS.ProcessEnv)).toThrow(RazorpayConfigurationError); });
-  it("uses official SDK resources", async () => { const { client } = fakeClient(); expect((await createTestModeOrder({ amount: 12500, currency: "INR", receipt: "receipt-1" }, client) as any).id).toBe("order_test_1"); expect((await fetchTestModeOrder("order_test_1", client)).status).toBe("paid"); expect((await fetchTestModeOrderStatus("order_test_1", client)).status).toBe("paid"); expect((await fetchTestModeOrderPayments("order_test_1", client)).count).toBe(1); expect((await fetchTestModePayment("pay_test_1", client)).status).toBe("captured"); expect((await fetchTestModePaymentStatus("pay_test_1", client)).captured).toBe(true); });
-  it("rejects invalid inputs before calls", async () => { const { client, calls } = fakeClient(); await expect(createTestModeOrder({ amount: 0, currency: "INR" }, client)).rejects.toThrow(RazorpayInputError); await expect(fetchTestModeOrder("pay_wrong", client)).rejects.toThrow(RazorpayInputError); expect(calls).toHaveLength(0); });
-  it("verifies exact raw webhook body", () => { const secret = "test-webhook-secret", rawBody = '{ "event": "payment.captured", "payload": {"id": 1} }', signature = crypto.createHmac("sha256", secret).update(rawBody).digest("hex"); expect(verifyRazorpayWebhookSignature(rawBody, signature, secret)).toBe(true); expect(verifyRazorpayWebhookSignature(JSON.stringify(JSON.parse(rawBody)), signature, secret)).toBe(false); expect(parseVerifiedRazorpayWebhook(rawBody, signature, secret)).toEqual({ event: "payment.captured", payload: { id: 1 } }); expect(() => parseVerifiedRazorpayWebhook(rawBody, "forged", secret)).toThrow(RazorpayWebhookVerificationError); });
+  it("accepts test credentials", () => {
+    expect(() =>
+      createTestModeClient({
+        RAZORPAY_API_KEY: "rzp_test_example",
+        RAZORPAY_API_SECRET: "example-secret",
+      } as unknown as NodeJS.ProcessEnv),
+    ).not.toThrow();
+    expect(() =>
+      createTestModeClient({
+        RAZORPAY_API_KEY: "rzp_live_example",
+        RAZORPAY_API_SECRET: "example-secret",
+      } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(RazorpayConfigurationError);
+    expect(() =>
+      createTestModeClient({} as unknown as NodeJS.ProcessEnv),
+    ).toThrow(RazorpayConfigurationError);
+  });
+  it("uses official SDK resources", async () => {
+    const { client } = fakeClient();
+    expect(
+      (
+        (await createTestModeOrder(
+          { amount: 12500, currency: "INR", receipt: "receipt-1" },
+          client,
+        )) as any
+      ).id,
+    ).toBe("order_test_1");
+    expect((await fetchTestModeOrder("order_test_1", client)).status).toBe(
+      "paid",
+    );
+    expect(
+      (await fetchTestModeOrderStatus("order_test_1", client)).status,
+    ).toBe("paid");
+    expect(
+      (await fetchTestModeOrderPayments("order_test_1", client)).count,
+    ).toBe(1);
+    expect((await fetchTestModePayment("pay_test_1", client)).status).toBe(
+      "captured",
+    );
+    expect(
+      (await fetchTestModePaymentStatus("pay_test_1", client)).captured,
+    ).toBe(true);
+  });
+  it("rejects invalid inputs before calls", async () => {
+    const { client, calls } = fakeClient();
+    await expect(
+      createTestModeOrder({ amount: 0, currency: "INR" }, client),
+    ).rejects.toThrow(RazorpayInputError);
+    await expect(fetchTestModeOrder("pay_wrong", client)).rejects.toThrow(
+      RazorpayInputError,
+    );
+    expect(calls).toHaveLength(0);
+  });
+  it("verifies exact raw webhook body", () => {
+    const secret = "test-webhook-secret",
+      rawBody =
+        '{ "event": "payment.captured", "payload": {"payment": {"entity": {"id": "pay_test_1"}}} }',
+      signature = crypto
+        .createHmac("sha256", secret)
+        .update(rawBody)
+        .digest("hex");
+    expect(verifyRazorpayWebhookSignature(rawBody, signature, secret)).toBe(
+      true,
+    );
+    expect(
+      verifyRazorpayWebhookSignature(
+        JSON.stringify(JSON.parse(rawBody)),
+        signature,
+        secret,
+      ),
+    ).toBe(false);
+    expect(parseVerifiedRazorpayWebhook(rawBody, signature, secret)).toEqual({
+      event: "payment.captured",
+      payload: { payment: { entity: { id: "pay_test_1" } } },
+    });
+    expect(() =>
+      parseVerifiedRazorpayWebhook(rawBody, "forged", secret),
+    ).toThrow(RazorpayWebhookVerificationError);
+  });
+  it("parses order webhook entities without accepting numeric placeholder IDs", () => {
+    const secret = "test-webhook-secret";
+    const rawBody =
+      '{"event":"order.paid","payload":{"order":{"entity":{"id":"order_test_1"}}}}';
+    const signature = crypto
+      .createHmac("sha256", secret)
+      .update(rawBody)
+      .digest("hex");
+    expect(parseVerifiedRazorpayWebhook(rawBody, signature, secret)).toEqual({
+      event: "order.paid",
+      payload: { order: { entity: { id: "order_test_1" } } },
+    });
+  });
 });

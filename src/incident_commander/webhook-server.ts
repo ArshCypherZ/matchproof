@@ -36,6 +36,8 @@ server.listen(port, "0.0.0.0", () => {
   );
 });
 
-function shutdown() { server.close(() => void store.close()); }
+function shutdown() {
+  server.close(() => void store.close());
+}
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

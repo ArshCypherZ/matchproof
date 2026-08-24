@@ -40,5 +40,12 @@
     "skipLibCheck": true,
 
     "esModuleInterop": true
-  }
+  },
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "vitest.config.mts",
+    "drizzle.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", "apps/web"]
 }

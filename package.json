@@ -6,14 +6,16 @@
   "packageManager": "pnpm@11.23.0+sha512.f00082e5b283a199b74e079da28d155c008fe232f44c8a06ea7ddfa014ecf719fc362f790ecc67b28106ddac2afb24c49a9a079159da560b2ce7d1e98efd11af",
   "scripts": {
     "test": "vitest run",
+    "test:postgres": "RUN_POSTGRES_TESTS=1 vitest run tests/postgres.test.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src tests apps",
     "format:check": "prettier --check src tests apps",
-    "lint": "eslint src tests",
+    "lint": "eslint src tests vitest.config.mts drizzle.config.ts",
     "razorpay:verify": "tsx src/incident_commander/verify-razorpay.ts",
     "razorpay:webhook-server": "tsx src/incident_commander/webhook-server.ts",
     "demo": "tsx src/incident_commander/demo.ts",
     "db:generate": "drizzle-kit generate",
+    "db:generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",
     "db:migrate": "drizzle-kit migrate",
     "dev": "pnpm --dir apps/web dev",
     "build": "pnpm --dir apps/web build"
@@ -35,6 +37,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.2.0",
     "@types/pg": "^8.23.1",
@@ -43,7 +46,8 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.9.0",
     "prettier": "^3.9.6",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.11"
   }
 }

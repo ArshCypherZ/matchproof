@@ -1,5 +1,13 @@
 import Razorpay from "razorpay";
-import { RazorpayOrderSchema, RazorpayPaymentCollectionSchema, RazorpayPaymentSchema, RazorpayWebhookBodyEnvelopeSchema, type RazorpayOrder as ParsedRazorpayOrder, type RazorpayPayment as ParsedRazorpayPayment, type RazorpayPaymentCollection as ParsedRazorpayPaymentCollection } from "../domain/schemas";
+import {
+  RazorpayOrderSchema,
+  RazorpayPaymentCollectionSchema,
+  RazorpayPaymentSchema,
+  RazorpayWebhookBodyEnvelopeSchema,
+  type RazorpayOrder as ParsedRazorpayOrder,
+  type RazorpayPayment as ParsedRazorpayPayment,
+  type RazorpayPaymentCollection as ParsedRazorpayPaymentCollection,
+} from "../domain/schemas";
 
 export class RazorpayConfigurationError extends Error {}
 export class RazorpayInputError extends Error {}
@@ -104,7 +112,9 @@ export async function fetchTestModeOrder(
   client?: RazorpayClient,
 ) {
   assertId(orderId, "order");
-  return RazorpayOrderSchema.parse(await clientOrDefault(client).orders.fetch(orderId));
+  return RazorpayOrderSchema.parse(
+    await clientOrDefault(client).orders.fetch(orderId),
+  );
 }
 
 /** Fetch the fields used for deterministic order reconciliation. */
@@ -130,7 +140,9 @@ export async function fetchTestModeOrderPayments(
   client?: RazorpayClient,
 ) {
   assertId(orderId, "order");
-  return RazorpayPaymentCollectionSchema.parse(await clientOrDefault(client).orders.fetchPayments(orderId));
+  return RazorpayPaymentCollectionSchema.parse(
+    await clientOrDefault(client).orders.fetchPayments(orderId),
+  );
 }
 
 /** Fetch an authoritative Test-mode payment state. */
@@ -139,7 +151,9 @@ export async function fetchTestModePayment(
   client?: RazorpayClient,
 ) {
   assertId(paymentId, "pay");
-  return RazorpayPaymentSchema.parse(await clientOrDefault(client).payments.fetch(paymentId));
+  return RazorpayPaymentSchema.parse(
+    await clientOrDefault(client).payments.fetch(paymentId),
+  );
 }
 
 /** Fetch the fields used for deterministic payment/order reconciliation. */

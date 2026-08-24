@@ -1,9 +1,103 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
-export const payments = sqliteTable("payments", { paymentId: text("payment_id").primaryKey(), state: text("state").notNull(), amountMinor: integer("amount_minor").notNull(), currency: text("currency").notNull(), operation: text("operation").notNull(), operationKey: text("operation_key").notNull(), updatedAt: text("updated_at").notNull() }, (table) => ({ paymentCorrelation: index("payments_payment_id_idx").on(table.paymentId), operationCorrelation: index("payments_operation_key_idx").on(table.operationKey) }));
-export const incidents = sqliteTable("incidents", { incidentId: text("incident_id").primaryKey(), paymentId: text("payment_id").notNull(), idempotencyKey: text("idempotency_key").notNull(), bundle: text("bundle").notNull() }, (table) => ({ paymentCorrelation: index("incidents_payment_id_idx").on(table.paymentId), operationCorrelation: index("incidents_idempotency_key_idx").on(table.idempotencyKey) }));
-export const recoveries = sqliteTable("recoveries", { executionKey: text("execution_key").primaryKey(), action: text("action").notNull(), status: text("status").notNull(), beforeState: text("before_state").notNull(), afterState: text("after_state").notNull(), completedAt: text("completed_at").notNull() });
-export const auditEvents = sqliteTable("audit_events", { sequence: integer("sequence").primaryKey({ autoIncrement: true }), recordedAt: text("recorded_at").notNull(), eventType: text("event_type").notNull(), payload: text("payload").notNull() });
-export const razorpayWebhookEvents = sqliteTable("razorpay_webhook_events", { eventId: text("event_id").primaryKey(), eventType: text("event_type").notNull(), signature: text("signature").notNull(), body: text("body").notNull(), paymentId: text("payment_id"), receivedAt: text("received_at").notNull(), acceptedAt: text("accepted_at").notNull(), incidentId: text("incident_id") }, (table) => ({ paymentCorrelation: index("webhook_payment_id_idx").on(table.paymentId) }));
-export const incidentProgress = sqliteTable("incident_progress", { incidentId: text("incident_id").primaryKey(), step: text("step").notNull(), status: text("status").notNull(), updatedAt: text("updated_at").notNull(), details: text("details").notNull() });
-export const schema = { payments, incidents, recoveries, auditEvents, razorpayWebhookEvents, incidentProgress };
+export const payments = sqliteTable(
+  "payments",
+  {
+    paymentId: text("payment_id").primaryKey(),
+    state: text("state").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    operation: text("operation").notNull(),
+    operationKey: text("operation_key").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    paymentCorrelation: index("payments_payment_id_idx").on(table.paymentId),
+    operationCorrelation: index("payments_operation_key_idx").on(
+      table.operationKey,
+    ),
+  }),
+);
+export const incidents = sqliteTable(
+  "incidents",
+  {
+    incidentId: text("incident_id").primaryKey(),
+    paymentId: text("payment_id")
+      .notNull()
+      .references(() => payments.paymentId),
+    idempotencyKey: text("idempotency_key").notNull(),
+    bundle: text("bundle").notNull(),
+  },
+  (table) => ({
+    paymentCorrelation: index("incidents_payment_id_idx").on(table.paymentId),
+    operationCorrelation: index("incidents_idempotency_key_idx").on(
+      table.idempotencyKey,
+    ),
+  }),
+);
+export const recoveries = sqliteTable("recoveries", {
+  executionKey: text("execution_key").primaryKey(),
+  action: text("action").notNull(),
+  status: text("status").notNull(),
+  beforeState: text("before_state").notNull(),
+  afterState: text("after_state").notNull(),
+  completedAt: text("completed_at").notNull(),
+});
+export const auditEvents = sqliteTable("audit_events", {
+  sequence: integer("sequence").primaryKey({ autoIncrement: true }),
+  recordedAt: text("recorded_at").notNull(),
+  eventType: text("event_type").notNull(),
+  payload: text("payload").notNull(),
+});
+export const razorpayWebhookEvents = sqliteTable(
+  "razorpay_webhook_events",
+  {
+    eventId: text("event_id").primaryKey(),
+    eventType: text("event_type").notNull(),
+    signature: text("signature").notNull(),
+    body: text("body").notNull(),
+    paymentId: text("payment_id"),
+    receivedAt: text("received_at").notNull(),
+    acceptedAt: text("accepted_at").notNull(),
+    incidentId: text("incident_id").references(() => incidents.incidentId),
+  },
+  (table) => ({
+    paymentCorrelation: index("webhook_payment_id_idx").on(table.paymentId),
+  }),
+);
+export const incidentProgress = sqliteTable(
+  "incident_progress",
+  {
+    sequence: integer("sequence").primaryKey({ autoIncrement: true }),
+    incidentId: text("incident_id")
+      .notNull()
+      .references(() => incidents.incidentId),
+    step: text("step").notNull(),
+    status: text("status").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    details: text("details").notNull(),
+  },
+  (table) => ({
+    incidentIndex: index("incident_progress_incident_id_idx").on(
+      table.incidentId,
+    ),
+    stepIndex: index("incident_progress_step_idx").on(table.step),
+    stepStatusIdentity: uniqueIndex(
+      "incident_progress_incident_step_status_idx",
+    ).on(table.incidentId, table.step, table.status),
+  }),
+);
+export const schema = {
+  payments,
+  incidents,
+  recoveries,
+  auditEvents,
+  razorpayWebhookEvents,
+  incidentProgress,
+};

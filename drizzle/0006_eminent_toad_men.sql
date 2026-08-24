@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "incident_progress_incident_step_status_idx" ON "incident_progress" USING btree ("incident_id","step","status");

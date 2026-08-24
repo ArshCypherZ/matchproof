@@ -13,7 +13,7 @@ Canonical implementation context:
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 24 LTS
 - pnpm 11+
 
 ## Local PostgreSQL
@@ -34,8 +34,8 @@ pnpm install
 pnpm run demo -- --mode fixture
 ```
 
-The run uses the checked-in timeout-after-mutation fixture, the local PostgreSQL
-database, and the fixture diagnosis adapter. It runs offline and without
+The run uses the checked-in timeout-after-mutation fixture, a local SQLite
+database by default, and the fixture diagnosis adapter. It runs offline and without
 `GROQ_API_KEY`; the output is labeled `FIXTURE / REHEARSAL`.
 
 ## Fixture and live modes
@@ -115,6 +115,10 @@ event ID, and receive timestamps durably. Signature verification happens
 before JSON parsing and persistence. The inbox is not yet connected to order
 reconciliation or fulfilment; those are separate policy-controlled steps.
 
+The durable `payments` row is the controller's correlation and observed-state
+record. It is not a replacement for the provider payment object or the
+merchant order record; those remain distinct evidence sources.
+
 Run the local webhook listener on port `9999`:
 
 ```bash
@@ -130,6 +134,15 @@ Your ngrok forwarding target should be
 
 ```bash
 pnpm test
+pnpm run test:postgres
 pnpm run typecheck
+pnpm run lint
+pnpm run format:check
 pnpm run demo -- --mode fixture
 ```
+
+`better-sqlite3` remains intentionally as the Drizzle driver for deterministic,
+offline fixture rehearsals. PostgreSQL is the durable live/server backend.
+Drizzle migration files are append-only history: new schema changes are added
+through `pnpm run db:generate` rather than rewriting migrations already applied
+to a database.
