@@ -13,7 +13,7 @@ Canonical implementation context:
 
 ## Prerequisites
 
-- Node.js 24 LTS
+- Node.js 22.13+ (the current supported Next.js runtime range)
 - pnpm 11+
 
 ## Local PostgreSQL
@@ -100,7 +100,7 @@ afterstate checks around each provider call.
 
 ## Webhook ingestion slice
 
-The webhook endpoint contract is intentionally narrow:
+Webhook endpoint contract:
 
 - `POST /webhooks/razorpay`;
 - raw request body plus `X-Razorpay-Signature` and `X-Razorpay-Event-Id` headers;
@@ -112,8 +112,8 @@ The webhook endpoint contract is intentionally narrow:
 
 `RazorpayWebhookInbox` stores the verified raw body, signature, event type,
 event ID, and receive timestamps durably. Signature verification happens
-before JSON parsing and persistence. The inbox is not yet connected to order
-reconciliation or fulfilment; those are separate policy-controlled steps.
+before JSON parsing and persistence. The inbox stores verified events. Order
+reconciliation and fulfilment are separate policy-controlled steps.
 
 The durable `payments` row is the controller's correlation and observed-state
 record. It is not a replacement for the provider payment object or the
@@ -141,8 +141,7 @@ pnpm run format:check
 pnpm run demo -- --mode fixture
 ```
 
-`better-sqlite3` remains intentionally as the Drizzle driver for deterministic,
-offline fixture rehearsals. PostgreSQL is the durable live/server backend.
-Drizzle migration files are append-only history: new schema changes are added
-through `pnpm run db:generate` rather than rewriting migrations already applied
-to a database.
+`better-sqlite3` is the Drizzle driver for deterministic, offline fixture
+rehearsals. PostgreSQL is the durable live/server backend. Drizzle migration
+files are append-only history. New schema changes are added through
+`pnpm run db:generate`.

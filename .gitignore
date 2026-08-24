@@ -1,10 +1,6 @@
-__pycache__/
-*.py[cod]
-.pytest_cache/
 .runtime/
 .env
 node_modules/
 .next/
 dist/
 build/
-*.egg-info/
