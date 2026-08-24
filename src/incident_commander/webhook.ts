@@ -1,6 +1,4 @@
 import http from "node:http";
-import fs from "node:fs";
-import path from "node:path";
 import {
   parseVerifiedRazorpayWebhook,
   RazorpayWebhookVerificationError,
@@ -37,45 +35,20 @@ function rawText(rawBody: string | Buffer) {
 }
 
 export class RazorpayWebhookInbox {
-  private readonly events = new Map<string, Record<string, string>>();
-  constructor(readonly file = ".runtime/razorpay-webhooks.json") {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    if (fs.existsSync(file)) for (const event of JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, string>[]) { const eventId = event.event_id; if (eventId) this.events.set(eventId, event); }
-  }
+  constructor(readonly store: import("./core").IncidentStore) {}
 
-  ingest(input: RazorpayWebhookIngestInput): RazorpayWebhookIngestResult {
+  async ingest(input: RazorpayWebhookIngestInput): Promise<RazorpayWebhookIngestResult> {
     assertEventId(input.eventId);
     const body = rawText(input.rawBody);
     const event = parseVerifiedRazorpayWebhook(body, input.signature, input.webhookSecret);
     const eventType = String(event.event);
     const receivedAt = input.receivedAt ?? new Date().toISOString();
-    const existing = this.events.get(input.eventId);
-    if (existing) {
-      if (existing.body !== body || existing.signature !== input.signature)
-        throw new RazorpayWebhookConflictError(
-          "Razorpay event ID was already stored with different evidence",
-        );
-      return {
-        status: "duplicate",
-        eventId: input.eventId,
-        eventType: existing["event_type"] ?? "",
-        receivedAt: existing["received_at"] ?? "",
-      };
-    }
-    this.events.set(input.eventId, { event_id: input.eventId, event_type: eventType, signature: input.signature, body, received_at: receivedAt, accepted_at: new Date().toISOString() });
-    fs.writeFileSync(this.file, JSON.stringify([...this.events.values()]));
-    return {
-      status: "accepted",
-      eventId: input.eventId,
-      eventType,
-      receivedAt,
-    };
+    const parsed = event as { payload?: { payment?: { entity?: { id?: string } } } };
+    const paymentId = parsed.payload?.payment?.entity?.id;
+    try { return await this.store.ingestWebhook({ eventId: input.eventId, eventType, signature: input.signature, body, receivedAt, ...(paymentId ? { paymentId } : {}) }); } catch (error) { if (error instanceof Error && error.message.includes("different evidence")) throw new RazorpayWebhookConflictError(error.message); throw error; }
   }
 
-  get(eventId: string) {
-    assertEventId(eventId);
-    return this.events.get(eventId);
-  }
+  get(eventId: string) { assertEventId(eventId); return this.store.webhookEvent(eventId); }
 }
 
 export function createRazorpayWebhookServer(
@@ -110,11 +83,7 @@ export function createRazorpayWebhookServer(
             ? { webhookSecret: options.webhookSecret }
             : {}),
         };
-        const result = inbox.ingest(input);
-        response.writeHead(result.status === "accepted" ? 200 : 200, {
-          "content-type": "application/json",
-        });
-        response.end(JSON.stringify(result));
+        void inbox.ingest(input).then((result) => { response.writeHead(200, { "content-type": "application/json" }); response.end(JSON.stringify(result)); }).catch((error) => { const status = error instanceof RazorpayWebhookConflictError ? 409 : 400; response.writeHead(status, { "content-type": "application/json" }); response.end(JSON.stringify({ error: error instanceof Error ? error.message : "webhook_rejected" })); });
       } catch (error) {
         const status =
           error instanceof RazorpayWebhookConflictError ? 409 : 400;

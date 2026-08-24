@@ -1,11 +1,12 @@
 import { runIncident } from "./workflow";
 import path from "node:path";
 const root = path.resolve(__dirname, "../..");
+const defaultFixtureState = path.join(root, ".runtime", "o2-incident-store.sqlite3");
 async function main() {
   const args = process.argv;
   const state = args.includes("--state")
-    ? args[args.indexOf("--state") + 1] ?? "postgresql"
-    : "postgresql";
+    ? args[args.indexOf("--state") + 1] ?? defaultFixtureState
+    : defaultFixtureState;
   const result = await runIncident(
     path.join(root, "fixtures/timeout_after_mutation.json"),
     state,

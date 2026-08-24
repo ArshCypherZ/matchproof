@@ -20,16 +20,20 @@ export async function runIncident(fixture: string, state: string, opts: { resetS
     opts.processorSecret ?? "test-prototype-secret",
   );
   await store.ingest(bundle);
+  await store.setProgress(bundle.incident_id, "gather", "completed", { evidence_count: bundle.evidence.length });
   const saved = await store.incident(bundle.incident_id);
   if (!saved) throw new Error(`incident ${bundle.incident_id} was not persisted`);
   const recon = reconstruct(saved);
+  await store.setProgress(saved.incident_id, "reconcile", "completed", { current_state: recon.current_state });
   const adapter = opts.diagnosisAdapter ?? new FixtureDiagnosisAdapter();
   const model = parseDiagnosisOutput(
     adapter.diagnose(saved, recon),
     new Set(recon.timeline.map((entry) => entry.evidence_id)),
   );
+  await store.setProgress(saved.incident_id, "diagnose", "completed", { provider: model.provenance.provider });
   const rec = model.diagnosis.recommendation;
   let dec = evaluate(rec, saved, recon, await store.payment(saved.payment_id));
+  await store.setProgress(saved.incident_id, "gate", "completed", { allowed: dec.allowed });
   let recommendation = rec;
   if (!dec.allowed) {
     recommendation = {
@@ -69,6 +73,7 @@ export async function runIncident(fixture: string, state: string, opts: { resetS
         ? "captured_verified"
         : payment.state;
     if (recommendation.action === "reconcile_internal_state") await store.updatePayment(saved.payment_id, after);
+    await store.setProgress(saved.incident_id, "execute", "completed", { action: recommendation.action });
     await store.completeRecovery(key, { action: recommendation.action, status: recommendation.action === "reconcile_internal_state" ? "reconciled" : "escalated", before_state: payment.state, after_state: after, completed_at: new Date().toISOString() });
     await store.audit("recovery_completed", {
         status:
@@ -93,6 +98,8 @@ export async function runIncident(fixture: string, state: string, opts: { resetS
   }
   const paymentAfter = await store.payment(saved.payment_id);
   if (!paymentAfter) throw new Error(`payment ${saved.payment_id} disappeared after recovery`);
+  await store.setProgress(saved.incident_id, "verify", "completed", { payment_state: paymentAfter.state });
+  await store.setProgress(saved.incident_id, outcome.status === "reconciled" ? "close" : "escalate", "completed", { outcome: outcome.status });
   return {
     bundle: saved,
     reconstruction: recon,

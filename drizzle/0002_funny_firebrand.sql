@@ -1,0 +1,1 @@
+ALTER TABLE "razorpay_webhook_events" ADD COLUMN "incident_id" text;

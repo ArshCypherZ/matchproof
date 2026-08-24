@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { IncidentStore } from "./core";
 import { createRazorpayWebhookServer, RazorpayWebhookInbox } from "./webhook";
 
 function loadLocalEnv() {
@@ -18,11 +19,10 @@ if (!secret) throw new Error("RAZORPAY_WEBHOOK_SECRET must be configured");
 
 const port = Number(process.env.PORT ?? "9999");
 
-const statePath = path.resolve(
-  process.env.RAZORPAY_WEBHOOK_STATE ?? ".runtime/razorpay-webhooks.sqlite3",
-);
-fs.mkdirSync(path.dirname(statePath), { recursive: true });
-const inbox = new RazorpayWebhookInbox(statePath.replace(/\.sqlite3$/, ".json"));
+const statePath = "postgresql";
+const store = new IncidentStore(statePath, false, secret);
+await store.initialize();
+const inbox = new RazorpayWebhookInbox(store);
 const server = createRazorpayWebhookServer(inbox, { webhookSecret: secret });
 
 server.listen(port, "0.0.0.0", () => {
@@ -36,6 +36,6 @@ server.listen(port, "0.0.0.0", () => {
   );
 });
 
-function shutdown() { server.close(); }
+function shutdown() { server.close(() => void store.close()); }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
