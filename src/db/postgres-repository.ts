@@ -25,6 +25,7 @@ import type {
   WebhookInput,
   WebhookRecord,
 } from "./repository";
+import { derivePaymentSeed } from "./repository";
 
 const migrationsFolder = "drizzle";
 const asPayment = (row: typeof payments.$inferSelect): PaymentRecord => ({
@@ -80,41 +81,17 @@ export class PostgresIncidentRepository implements IncidentRepository {
   }
 
   async ingest(bundle: IncidentBundle) {
-    const evidence = bundle.evidence.find(
-      (entry) => "amount_minor" in entry.payload && "currency" in entry.payload,
-    );
-    const internal = bundle.evidence.find(
-      (entry) => entry.kind === "internal_state",
-    );
-    const processor = bundle.evidence.find(
-      (entry) => entry.kind === "processor_webhook",
-    );
-    const amount =
-      evidence && "amount_minor" in evidence.payload
-        ? evidence.payload.amount_minor
-        : 0;
-    const currency =
-      evidence && "currency" in evidence.payload
-        ? evidence.payload.currency
-        : "UNK";
-    const operation =
-      evidence && "operation" in evidence.payload
-        ? evidence.payload.operation
-        : "read";
-    const state =
-      internal?.payload.payment_state ??
-      processor?.payload.payment_state ??
-      "unknown";
+    const seed = derivePaymentSeed(bundle);
     await this.db.transaction(async (tx) => {
-      if (amount > 0 && currency !== "UNK") {
+      if (seed) {
         await tx
           .insert(payments)
           .values({
             paymentId: bundle.payment_id,
-            state,
-            amountMinor: amount,
-            currency,
-            operation,
+            state: seed.state,
+            amountMinor: seed.amount_minor,
+            currency: seed.currency,
+            operation: seed.operation,
             operationKey: bundle.idempotency_key,
             updatedAt: new Date(),
           })

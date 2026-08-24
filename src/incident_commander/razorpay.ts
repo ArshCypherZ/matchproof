@@ -1,8 +1,8 @@
 import Razorpay from "razorpay";
 import {
-  RazorpayOrderSchema,
+  RazorpayOrderResponseSchema,
   RazorpayPaymentCollectionSchema,
-  RazorpayPaymentSchema,
+  RazorpayPaymentResponseSchema,
   RazorpayWebhookBodyEnvelopeSchema,
   type RazorpayOrder as ParsedRazorpayOrder,
   type RazorpayPayment as ParsedRazorpayPayment,
@@ -112,7 +112,7 @@ export async function fetchTestModeOrder(
   client?: RazorpayClient,
 ) {
   assertId(orderId, "order");
-  return RazorpayOrderSchema.parse(
+  return RazorpayOrderResponseSchema.parse(
     await clientOrDefault(client).orders.fetch(orderId),
   );
 }
@@ -151,7 +151,7 @@ export async function fetchTestModePayment(
   client?: RazorpayClient,
 ) {
   assertId(paymentId, "pay");
-  return RazorpayPaymentSchema.parse(
+  return RazorpayPaymentResponseSchema.parse(
     await clientOrDefault(client).payments.fetch(paymentId),
   );
 }

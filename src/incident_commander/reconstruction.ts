@@ -1,5 +1,6 @@
 import {
   ReconstructionSchema,
+  VerifiedPaymentStateSchema,
   type Evidence,
   type IncidentBundle,
   type Reconstruction,
@@ -46,7 +47,12 @@ export function reconstruct(bundle: IncidentBundle): Reconstruction {
       next = evidence.payload.payment_state;
       reason = "merchant state was observed";
     } else if (evidence.kind === "processor_webhook") {
-      next = `${evidence.payload.payment_state}_verified`;
+      const verifiedState = VerifiedPaymentStateSchema.safeParse(
+        `${evidence.payload.payment_state}_verified`,
+      );
+      next = verifiedState.success
+        ? verifiedState.data
+        : evidence.payload.payment_state;
       reason = "verified processor event establishes provider outcome";
     }
     if (next && next !== state) {

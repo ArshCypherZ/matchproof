@@ -1,5 +1,9 @@
 import fs from "node:fs";
-import { parseDiagnosisOutput, RecoveryOutcomeSchema } from "../domain/schemas";
+import {
+  parseDiagnosisOutput,
+  RecoveryOutcomeSchema,
+  VerifiedPaymentStateSchema,
+} from "../domain/schemas";
 import {
   IncidentStore,
   FixtureDiagnosisAdapter,
@@ -54,6 +58,7 @@ export async function runIncident(
   await markCompleted("diagnose", { provider: model.provenance.provider });
   const rec = model.diagnosis.recommendation;
   let dec = evaluate(rec, saved, recon, await store.payment(saved.payment_id));
+  const gateDecisions = [dec];
   await markCompleted("gate", { allowed: dec.allowed });
   let recommendation = rec;
   if (!dec.allowed) {
@@ -69,6 +74,7 @@ export async function runIncident(
       recon,
       await store.payment(saved.payment_id),
     );
+    gateDecisions.push(dec);
   }
   const key = `${recommendation.action}:${saved.incident_id}:${saved.payment_id}:${saved.idempotency_key}`;
   let outcome;
@@ -76,11 +82,7 @@ export async function runIncident(
   const payment = await store.payment(saved.payment_id);
   if (!payment)
     throw new Error(`payment ${saved.payment_id} was not persisted`);
-  if (
-    existing &&
-    (payment.state === existing.after_state ||
-      payment.state === "captured_verified")
-  )
+  if (existing && payment.state === existing.after_state)
     outcome = RecoveryOutcomeSchema.parse({
       status: "already_completed",
       action: recommendation.action,
@@ -92,7 +94,7 @@ export async function runIncident(
   else {
     const after =
       recommendation.action === "reconcile_internal_state"
-        ? "captured_verified"
+        ? VerifiedPaymentStateSchema.parse(recon.current_state)
         : payment.state;
     if (recommendation.action === "reconcile_internal_state")
       await store.updatePayment(saved.payment_id, after);
@@ -151,15 +153,7 @@ export async function runIncident(
     model_provenance: model.provenance,
     diagnosis_mode: opts.diagnosisMode || "fixture",
     resumed_from: resumeFrom,
-    gate_decisions: [
-      {
-        action: "retry_capture",
-        allowed: false,
-        reason:
-          "blocked: retry_capture is never authorized by this recovery workflow",
-      },
-      dec,
-    ],
+    gate_decisions: gateDecisions,
     outcome,
     payment_state: {
       ...paymentAfter,

@@ -1,4 +1,71 @@
-import type { Action, IncidentBundle, PaymentState } from "../domain/schemas";
+import {
+  PaymentOperationSchema,
+  PaymentStateSchema,
+  type Action,
+  type Evidence,
+  type IncidentBundle,
+  type PaymentOperation,
+  type PaymentState,
+} from "../domain/schemas";
+
+export type PaymentSeed = {
+  state: PaymentState;
+  amount_minor: number;
+  currency: string;
+  operation: PaymentOperation;
+};
+
+function latest<T extends { received_at: string }>(entries: T[]) {
+  return [...entries].sort(
+    (left, right) =>
+      Date.parse(right.received_at) - Date.parse(left.received_at),
+  )[0];
+}
+
+export function derivePaymentSeed(bundle: IncidentBundle): PaymentSeed | null {
+  const financialEvidence = bundle.evidence.filter(
+    (
+      entry,
+    ): entry is Extract<
+      Evidence,
+      { payload: { amount_minor: number; currency: string } }
+    > => "amount_minor" in entry.payload && "currency" in entry.payload,
+  );
+  if (!financialEvidence.length) return null;
+  const amounts = new Set(
+    financialEvidence.map((entry) => entry.payload.amount_minor),
+  );
+  const currencies = new Set(
+    financialEvidence.map((entry) => entry.payload.currency),
+  );
+  if (amounts.size !== 1 || currencies.size !== 1)
+    throw new Error(
+      "payment observations contain conflicting amount or currency",
+    );
+
+  const internal = bundle.evidence.filter(
+    (entry) => entry.kind === "internal_state",
+  );
+  const processor = bundle.evidence.filter(
+    (entry) => entry.kind === "processor_webhook",
+  );
+  const reference = latest(financialEvidence);
+  if (!reference) return null;
+  const latestInternal = latest(internal);
+  const latestProcessor = latest(processor);
+  const state =
+    latestInternal?.payload.payment_state ??
+    latestProcessor?.payload.payment_state ??
+    "unknown";
+  return {
+    state: PaymentStateSchema.parse(state),
+    amount_minor: reference.payload.amount_minor,
+    currency: reference.payload.currency,
+    operation: PaymentOperationSchema.parse(
+      "operation" in reference.payload ? reference.payload.operation : "read",
+    ),
+  };
+}
 
 export type PaymentRecord = {
   /** Controller-owned observed state; provider and merchant states remain separate evidence. */

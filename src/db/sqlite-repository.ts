@@ -25,6 +25,7 @@ import type {
   WebhookInput,
   WebhookRecord,
 } from "./repository";
+import { derivePaymentSeed } from "./repository";
 
 const asPayment = (row: typeof payments.$inferSelect): PaymentRecord => ({
   payment_id: row.paymentId,
@@ -74,47 +75,6 @@ export class SqliteIncidentRepository implements IncidentRepository {
     if (!hasTables) {
       migrate(this.db, { migrationsFolder: "drizzle-sqlite" });
     }
-    const columns = this.connection.client
-      .prepare("PRAGMA table_info(incident_progress)")
-      .all() as Array<{ name: string }>;
-    if (!columns.some((column) => column.name === "sequence")) {
-      this.connection.client.transaction(() => {
-        this.connection.client.exec(
-          "ALTER TABLE incident_progress RENAME TO incident_progress_legacy",
-        );
-        this.connection.client.exec(
-          "CREATE TABLE incident_progress (sequence integer primary key autoincrement, incident_id text not null, step text not null, status text not null, updated_at text not null, details text not null)",
-        );
-        this.connection.client.exec(
-          "INSERT INTO incident_progress(incident_id,step,status,updated_at,details) SELECT incident_id,step,status,updated_at,details FROM incident_progress_legacy",
-        );
-        this.connection.client.exec("DROP TABLE incident_progress_legacy");
-      })();
-    }
-    this.db.run(
-      sql`CREATE INDEX IF NOT EXISTS payments_payment_id_idx ON payments(payment_id)`,
-    );
-    this.db.run(
-      sql`CREATE INDEX IF NOT EXISTS payments_operation_key_idx ON payments(operation_key)`,
-    );
-    this.db.run(
-      sql`CREATE INDEX IF NOT EXISTS incidents_payment_id_idx ON incidents(payment_id)`,
-    );
-    this.db.run(
-      sql`CREATE INDEX IF NOT EXISTS incidents_idempotency_key_idx ON incidents(idempotency_key)`,
-    );
-    this.db.run(
-      sql`CREATE INDEX IF NOT EXISTS webhook_payment_id_idx ON razorpay_webhook_events(payment_id)`,
-    );
-    this.db.run(
-      sql`CREATE INDEX IF NOT EXISTS incident_progress_incident_id_idx ON incident_progress(incident_id)`,
-    );
-    this.db.run(
-      sql`CREATE INDEX IF NOT EXISTS incident_progress_step_idx ON incident_progress(step)`,
-    );
-    this.db.run(
-      sql`CREATE UNIQUE INDEX IF NOT EXISTS incident_progress_incident_step_status_idx ON incident_progress(incident_id,step,status)`,
-    );
     if (reset)
       this.connection.client.exec(
         "DELETE FROM audit_events; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress;",
@@ -124,41 +84,17 @@ export class SqliteIncidentRepository implements IncidentRepository {
     this.connection.client.close();
   }
   async ingest(bundle: IncidentBundle) {
-    const evidence = bundle.evidence.find(
-      (entry) => "amount_minor" in entry.payload && "currency" in entry.payload,
-    );
-    const internal = bundle.evidence.find(
-      (entry) => entry.kind === "internal_state",
-    );
-    const processor = bundle.evidence.find(
-      (entry) => entry.kind === "processor_webhook",
-    );
-    const amount =
-      evidence && "amount_minor" in evidence.payload
-        ? evidence.payload.amount_minor
-        : 0;
-    const currency =
-      evidence && "currency" in evidence.payload
-        ? evidence.payload.currency
-        : "UNK";
-    const operation =
-      evidence && "operation" in evidence.payload
-        ? evidence.payload.operation
-        : "read";
-    const state =
-      internal?.payload.payment_state ??
-      processor?.payload.payment_state ??
-      "unknown";
+    const seed = derivePaymentSeed(bundle);
     this.connection.client.transaction(() => {
-      if (amount > 0 && currency !== "UNK")
+      if (seed)
         this.db
           .insert(payments)
           .values({
             paymentId: bundle.payment_id,
-            state,
-            amountMinor: amount,
-            currency,
-            operation,
+            state: seed.state,
+            amountMinor: seed.amount_minor,
+            currency: seed.currency,
+            operation: seed.operation,
             operationKey: bundle.idempotency_key,
             updatedAt: new Date().toISOString(),
           })

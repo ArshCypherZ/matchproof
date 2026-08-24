@@ -13,6 +13,7 @@ import {
 } from "../src/incident_commander/core";
 import { runIncident } from "../src/incident_commander/workflow";
 import {
+  parseDiagnosisOutput,
   RecommendationSchema,
   RecoveryOutcomeSchema,
 } from "../src/domain/schemas";
@@ -80,6 +81,107 @@ describe("payment incident workflow", () => {
       "authorized_verified",
     );
   });
+  it("reconciles a verified authorized outcome without capture state", async () => {
+    const payload = {
+      event_id: "evt_authorized_002",
+      event_type: "payment.authorized",
+      payment_id: "pay_authorized_002",
+      payment_state: "authorized",
+      amount_minor: 125000,
+      currency: "INR",
+      idempotency_key: "authorize-order-002",
+      signature_verified: true,
+      operation: "authorize",
+    } as const;
+    const bundle = {
+      incident_id: "inc_late_authorized_002",
+      payment_id: payload.payment_id,
+      idempotency_key: payload.idempotency_key,
+      evidence: [
+        {
+          evidence_id: "EV-AUTH-002",
+          kind: "processor_webhook",
+          occurred_at: "2026-08-21T10:00:01.000Z",
+          received_at: "2026-08-21T10:00:02.000Z",
+          source: "processor-webhook",
+          processor_signature: processorSignature(payload, secret),
+          payload,
+        },
+      ],
+    };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-authorized-"));
+    const fixturePath = path.join(dir, "authorized.json");
+    fs.writeFileSync(fixturePath, JSON.stringify(bundle));
+    const diagnosisAdapter = {
+      provider: "fixture",
+      model: "fixture-authorized-v1",
+      diagnose: () => ({
+        diagnosis: {
+          hypotheses: [
+            {
+              rank: 1,
+              summary: "Provider authorization was verified.",
+              reasoning: "The signed provider event establishes authorization.",
+              uncertainty: "Merchant state requires reconciliation.",
+              confidence: 1,
+              evidence_ids: ["EV-AUTH-002"],
+            },
+          ],
+          recommendation: {
+            action: "reconcile_internal_state",
+            reasoning: "Apply the verified provider state.",
+            uncertainty: "Escalate if invariants fail.",
+            evidence_ids: ["EV-AUTH-002"],
+          },
+        },
+        provenance: {
+          provider: "fixture",
+          requested_model: "fixture-authorized-v1",
+          returned_model: "fixture-authorized-v1",
+          request_id: "fixture-authorized-call",
+          strict_schema: true,
+        },
+      }),
+    } as FixtureDiagnosisAdapter;
+    const result = await runIncident(fixturePath, path.join(dir, "state"), {
+      resetState: true,
+      processorSecret: secret,
+      diagnosisAdapter,
+    });
+    expect(result.outcome.after_state).toBe("authorized_verified");
+    expect(result.payment_state.state).toBe("authorized_verified");
+    expect(result.gate_decisions).toEqual([
+      expect.objectContaining({
+        action: "reconcile_internal_state",
+        allowed: true,
+      }),
+    ]);
+  });
+  it("uses the latest same-source observation when seeding controller state", async () => {
+    const bundle = raw();
+    const internal = bundle.evidence.find(
+      (entry: any) => entry.kind === "internal_state",
+    );
+    bundle.evidence.push({
+      ...internal,
+      evidence_id: "EV-STATE-002",
+      occurred_at: "2026-08-21T10:00:06.000Z",
+      received_at: "2026-08-21T10:00:06.000Z",
+      payload: { ...internal.payload, payment_state: "captured" },
+    });
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-state-"));
+    const store = new IncidentStore(path.join(dir, "incident"), true, secret);
+    await store.initialize();
+    await store.ingest(bundle);
+    expect((await store.payment(bundle.payment_id))?.state).toBe("captured");
+    await store.close();
+  });
+  it("rejects diagnosis references outside canonical evidence", () => {
+    const output = new FixtureDiagnosisAdapter().diagnose();
+    expect(() => parseDiagnosisOutput(output, new Set(["EV-REQ-001"]))).toThrow(
+      "EV-TIMEOUT-001 is not canonical",
+    );
+  });
   it("requires governance fields when an outcome escalates", () => {
     expect(() =>
       RecoveryOutcomeSchema.parse({
@@ -134,16 +236,21 @@ describe("payment incident workflow", () => {
     expect(progress.filter((entry) => entry.step === "detect")).toHaveLength(1);
     await store.close();
   });
-  it("persisted evidence is reverified", async () => {
+  it("reverifies persisted evidence when it is read", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-ts-")),
       s = new IncidentStore(path.join(dir, "x"), true, secret);
     await s.initialize();
-    const b = raw();
-    b.evidence.find(
-      (x: any) => x.kind === "processor_webhook",
-    ).processor_signature = "forged";
     await s.ingest(raw());
-    expect(() => verifyBundle(b, secret)).toThrow(EvidenceError);
     await s.close();
+    const reopened = new IncidentStore(
+      path.join(dir, "x"),
+      false,
+      "wrong-secret",
+    );
+    await reopened.initialize();
+    await expect(
+      reopened.incident("inc_timeout_after_capture_001"),
+    ).rejects.toThrow(EvidenceError);
+    await reopened.close();
   });
 });

@@ -26,13 +26,25 @@ export const PaymentStateSchema = z.enum([
   "capture_pending",
   "captured",
   "captured_verified",
+  "authorized_verified",
+  "failed_verified",
   "failed",
   "refunded",
   "refunded_verified",
   "paid",
+  "paid_verified",
   "paid_pending",
 ]);
 export type PaymentState = z.infer<typeof PaymentStateSchema>;
+
+export const VerifiedPaymentStateSchema = z.enum([
+  "authorized_verified",
+  "captured_verified",
+  "failed_verified",
+  "refunded_verified",
+  "paid_verified",
+]);
+export type VerifiedPaymentState = z.infer<typeof VerifiedPaymentStateSchema>;
 
 export const PaymentStatusSchema = z.enum([
   "created",
@@ -93,6 +105,9 @@ export const RazorpayPaymentSchema = z
   })
   .strict();
 
+/** Provider responses may contain additional fields; normalize them to the internal shape. */
+export const RazorpayPaymentResponseSchema = RazorpayPaymentSchema.strip();
+
 export const RazorpayOrderSchema = z
   .object({
     entity: z.literal("order").optional(),
@@ -109,6 +124,7 @@ export const RazorpayOrderSchema = z
     created_at: z.number().int().nonnegative().optional(),
   })
   .strict();
+export const RazorpayOrderResponseSchema = RazorpayOrderSchema.strip();
 
 export const RazorpayOrderPaymentSchema = z
   .object({ id: identifier("pay"), order_id: identifier("order") })
@@ -385,23 +401,19 @@ export function parseDiagnosisOutput(
   value: unknown,
   canonicalEvidenceIds: ReadonlySet<string>,
 ): DiagnosisOutput {
-  return DiagnosisOutputSchema.superRefine((output, ctx) => {
-    const evidenceIds = [
-      ...output.diagnosis.hypotheses.flatMap(
-        (hypothesis) => hypothesis.evidence_ids,
-      ),
-      ...output.diagnosis.recommendation.evidence_ids,
-    ];
-    evidenceIds.forEach((evidenceId) => {
-      if (!canonicalEvidenceIds.has(evidenceId)) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["diagnosis"],
-          message: `evidence_id ${evidenceId} is not canonical`,
-        });
-      }
-    });
-  }).parse(value);
+  const output = DiagnosisOutputSchema.parse(value);
+  const evidenceIds = [
+    ...output.diagnosis.hypotheses.flatMap(
+      (hypothesis) => hypothesis.evidence_ids,
+    ),
+    ...output.diagnosis.recommendation.evidence_ids,
+  ];
+  const invalidEvidenceId = evidenceIds.find(
+    (evidenceId) => !canonicalEvidenceIds.has(evidenceId),
+  );
+  if (invalidEvidenceId)
+    throw new Error(`evidence_id ${invalidEvidenceId} is not canonical`);
+  return output;
 }
 
 export const PolicyGateDecisionSchema = z
@@ -416,8 +428,8 @@ export const RecoveryOutcomeSchema = z
     status: z.enum(["reconciled", "escalated", "already_completed"]),
     action: ActionSchema,
     idempotency_key: idempotencyKey,
-    before_state: z.string().min(1),
-    after_state: z.string().min(1),
+    before_state: PaymentStateSchema,
+    after_state: PaymentStateSchema,
     reason: z.string().min(1),
     escalation_reason: z.string().min(1).optional(),
     terminal_owner: z.string().min(1).optional(),

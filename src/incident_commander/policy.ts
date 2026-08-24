@@ -1,5 +1,6 @@
 import {
   PolicyGateDecisionSchema,
+  VerifiedPaymentStateSchema,
   type Action,
   type DiagnosisOutput,
   type IncidentBundle,
@@ -40,7 +41,9 @@ export function evaluate(
   const action = recommendation.action;
   if (
     action === "reconcile_internal_state" &&
-    reconstruction.ambiguity_reasons.length
+    (reconstruction.ambiguity_reasons.length ||
+      !VerifiedPaymentStateSchema.safeParse(reconstruction.current_state)
+        .success)
   )
     return decision(
       recommendation.action,

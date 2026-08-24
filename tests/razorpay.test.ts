@@ -32,6 +32,8 @@ function fakeClient() {
           amount_due: 0,
           currency: "INR",
           attempts: 1,
+          is_testmode: true,
+          callback_url: "https://merchant.example/callback",
         };
       },
       fetchPayments: async (id: string) => {
@@ -53,6 +55,9 @@ function fakeClient() {
           refund_status: null,
           error_code: null,
           error_description: null,
+          token_id: "token_test_1",
+          reward_amount: 0,
+          upi: { vpa: "user@upi" },
         };
       },
       all: async () => ({ items: [] }),
@@ -88,18 +93,18 @@ describe("razorpay", () => {
         )) as any
       ).id,
     ).toBe("order_test_1");
-    expect((await fetchTestModeOrder("order_test_1", client)).status).toBe(
-      "paid",
-    );
+    const order = await fetchTestModeOrder("order_test_1", client);
+    expect(order.status).toBe("paid");
+    expect("is_testmode" in order).toBe(false);
     expect(
       (await fetchTestModeOrderStatus("order_test_1", client)).status,
     ).toBe("paid");
     expect(
       (await fetchTestModeOrderPayments("order_test_1", client)).count,
     ).toBe(1);
-    expect((await fetchTestModePayment("pay_test_1", client)).status).toBe(
-      "captured",
-    );
+    const payment = await fetchTestModePayment("pay_test_1", client);
+    expect(payment.status).toBe("captured");
+    expect("token_id" in payment).toBe(false);
     expect(
       (await fetchTestModePaymentStatus("pay_test_1", client)).captured,
     ).toBe(true);
