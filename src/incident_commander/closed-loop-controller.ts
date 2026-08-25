@@ -71,6 +71,11 @@ export type ClosedLoopRunResult = {
 
 export type ClosedLoopControllerOptions = {
   maxIterations?: number;
+  wait?(input: {
+    step: ClosedLoopStep;
+    iteration: number;
+    delayMs: number;
+  }): Promise<void>;
   onEscalate?(input: {
     step: ClosedLoopStep;
     response: BoundedFailureResponse;
@@ -154,6 +159,8 @@ export class ClosedLoopController {
           cursor = observe;
           continue;
         }
+        if (response === "wait" && this.retryAllowed(response, iteration))
+          await this.wait(step, iteration);
         if (this.retryAllowed(response, iteration)) {
           await this.store.setProgress(
             incidentId,
@@ -188,6 +195,11 @@ export class ClosedLoopController {
           cursor = observe;
           continue;
         }
+        if (
+          result.response === "wait" &&
+          this.retryAllowed(result.response, iteration)
+        )
+          await this.wait(step, iteration);
         if (!this.retryAllowed(result.response, iteration))
           return this.escalate(
             incidentId,
@@ -274,6 +286,13 @@ export class ClosedLoopController {
       response !== "stop" &&
       response !== "escalate"
     );
+  }
+
+  private async wait(step: ClosedLoopStep, iteration: number) {
+    const delayMs = Math.min(1_000 * 2 ** (iteration - 1), 30_000);
+    if (this.options.wait)
+      await this.options.wait({ step, iteration, delayMs });
+    else await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
   private async escalate(

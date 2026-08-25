@@ -5,6 +5,10 @@ import {
   type ClosedLoopStepDefinition,
 } from "../src/incident_commander/closed-loop-controller";
 import type { ProgressRecord } from "../src/db/repository";
+import {
+  FAILURE_SCENARIOS,
+  failureScenario,
+} from "../src/incident_commander/failure-scenarios";
 
 class MemoryProgressStore {
   records: ProgressRecord[] = [];
@@ -125,5 +129,36 @@ describe("ClosedLoopController", () => {
     );
     expect(result).toEqual(["A", "B", "C"]);
     expect(order).toEqual([0, 1, 2]);
+  });
+
+  it("waits with bounded exponential backoff before a rate-limit retry", async () => {
+    const store = new MemoryProgressStore();
+    const waits: number[] = [];
+    let attempts = 0;
+    const steps = definitions(async (step) => {
+      if (step === "gather" && ++attempts === 1)
+        throw new Error("429 rate limit");
+    }).map((step) =>
+      step.name === "gather"
+        ? { ...step, failureResponse: () => "wait" as const }
+        : step,
+    );
+    const result = await new ClosedLoopController(store, {
+      maxIterations: 2,
+      wait: async ({ delayMs }) => {
+        waits.push(delayMs);
+      },
+    }).run("inc_rate_limit", steps);
+    expect(result.terminal).toBe("close");
+    expect(waits).toEqual([1_000]);
+  });
+
+  it("defines every T-020 scenario with a bounded controller response", () => {
+    expect(FAILURE_SCENARIOS).toHaveLength(12);
+    expect(new Set(FAILURE_SCENARIOS.map(({ id }) => id)).size).toBe(12);
+    expect(failureScenario("merchant_ack_loss").response).toBe("verify_state");
+    expect(failureScenario("contradictory_afterstate").response).toBe(
+      "escalate",
+    );
   });
 });
