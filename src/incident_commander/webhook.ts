@@ -8,6 +8,7 @@ import type { WebhookProcessingResult } from "../db/repository";
 import { reconstruct } from "./reconstruction";
 import { VerifiedPaymentStateSchema } from "../domain/schemas";
 import type { EvidenceGatherer } from "./evidence-gatherer";
+import { metricsSnapshot, recordEvent } from "../observability";
 
 const EVENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 
@@ -63,6 +64,11 @@ export class RazorpayWebhookInbox {
     const paymentEntity =
       "payment" in parsed ? parsed.payment.entity : undefined;
     const paymentId = paymentEntity?.id;
+    recordEvent("webhook_received", {
+      event_id: input.eventId,
+      event_type: eventType,
+      payment_id: paymentId,
+    });
     try {
       return await this.store.ingestWebhook({
         eventId: input.eventId,
@@ -208,6 +214,11 @@ export class RazorpayWebhookInbox {
       incident_id: result.incidentId,
       late_evidence: result.lateEvidence,
     });
+    recordEvent("evidence_ingested", {
+      event_id: eventId,
+      incident_id: result.incidentId,
+      status: result.status,
+    });
     if (!result.reverifyRequired) return result;
     const bundle = await this.store.incident(result.incidentId);
     const payment = await this.store.payment(paymentId);
@@ -252,6 +263,18 @@ export function createRazorpayWebhookServer(
 ) {
   const maxBodyBytes = options.maxBodyBytes ?? 1_000_000;
   return http.createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({ status: "ok", service: "razorpay-webhook-server" }),
+      );
+      return;
+    }
+    if (request.method === "GET" && request.url === "/metrics") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(metricsSnapshot()));
+      return;
+    }
     if (request.method !== "POST" || request.url !== "/webhooks/razorpay") {
       response.writeHead(404, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "not_found" }));

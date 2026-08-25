@@ -1,4 +1,10 @@
 import type { ProgressRecord } from "../db/repository";
+import {
+  recordEvent,
+  recordIncidentClass,
+  recordMetric,
+  startSpan,
+} from "../observability";
 
 export const CLOSED_LOOP_STEPS = [
   "gather",
@@ -114,6 +120,7 @@ export class ClosedLoopController {
         throw new Error(`closed loop step ${step} is missing`);
 
     const existing = await this.store.progress(incidentId);
+    recordMetric("incidents_processed");
     const latest = await this.store.latestProgress(incidentId);
     const completedProgress = new Map<ClosedLoopStep, ProgressRecord>();
     for (const record of existing)
@@ -139,6 +146,11 @@ export class ClosedLoopController {
         });
 
       let result: StepResult;
+      const span = startSpan(`incident.${step}`, {
+        "incident.id": incidentId,
+        "incident.step": step,
+      });
+      const startedAt = Date.now();
       try {
         result = await definition.run({
           iteration,
@@ -146,6 +158,14 @@ export class ClosedLoopController {
           ...(prior ? { progress: prior } : {}),
         });
       } catch (error) {
+        span.recordException(error as Error);
+        span.setStatus({ code: 2 });
+        span.end();
+        recordEvent("incident_escalated", {
+          incident_id: incidentId,
+          step,
+          error: errorMessage(error),
+        });
         const response = definition.failureResponse?.(error) ?? "escalate";
         const reason = errorMessage(error);
         await this.store.setProgress(incidentId, step, `failed:${iteration}`, {
@@ -181,6 +201,10 @@ export class ClosedLoopController {
           latest?.step,
         );
       }
+
+      span.end();
+      if (step === "gather")
+        recordMetric("evidence_gather_latency_ms", Date.now() - startedAt);
 
       if (result.status === "retry") {
         await this.store.setProgress(
@@ -236,6 +260,13 @@ export class ClosedLoopController {
           result.terminal,
           "completed",
           result.details,
+        );
+        recordIncidentClass("unknown", result.terminal);
+        recordEvent(
+          result.terminal === "close"
+            ? "incident_closed"
+            : "incident_escalated",
+          { incident_id: incidentId, terminal: result.terminal },
         );
         return {
           terminal: result.terminal,
