@@ -180,7 +180,7 @@ export interface IncidentRepository {
     executionKey: string,
   ): Promise<AfterstateObservation | undefined>;
   audit(type: string, payload: unknown): Promise<number | undefined>;
-  auditRecords(): Promise<unknown[]>;
+  auditRecords(): Promise<import("../domain/schemas").AuditEvent[]>;
   setProgress(
     incidentId: string,
     step: string,

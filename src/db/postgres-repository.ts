@@ -22,6 +22,8 @@ import {
   type PaymentState,
   type AfterstateObservation,
   type IncidentBundle,
+  AuditEventSchema,
+  createAuditGovernancePayload,
 } from "../domain/schemas";
 import type {
   IncidentRepository,
@@ -333,9 +335,14 @@ export class PostgresIncidentRepository implements IncidentRepository {
     return row ? AfterstateObservationSchema.parse(row.observation) : undefined;
   }
   async audit(type: string, payload: unknown) {
+    const governancePayload = createAuditGovernancePayload(type, payload);
     const [row] = await this.db
       .insert(auditEvents)
-      .values({ recordedAt: new Date(), eventType: type, payload })
+      .values({
+        recordedAt: new Date(),
+        eventType: type,
+        payload: governancePayload,
+      })
       .returning({ sequence: auditEvents.sequence });
     return row?.sequence;
   }
@@ -348,7 +355,8 @@ export class PostgresIncidentRepository implements IncidentRepository {
       sequence: row.sequence,
       recorded_at: row.recordedAt.toISOString(),
       event_type: row.eventType,
-      payload: JSON.stringify(row.payload),
+      eventType: row.eventType,
+      payload: AuditEventSchema.shape.payload.parse(row.payload),
     }));
   }
   async setProgress(

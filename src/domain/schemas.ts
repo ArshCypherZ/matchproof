@@ -855,14 +855,125 @@ export const AfterstateObservationSchema = z
     observed_at: timestamp,
   })
   .strict();
+export const AuditGovernancePayloadSchema = z
+  .object({
+    tenant_id: z.string().min(1),
+    actor: z.string().min(1),
+    credential_scope: z.string().min(1),
+    tool_allowlist: z.array(z.string().min(1)),
+    evidence_provenance: z.array(z.string().min(1)),
+    evidence_freshness: z.string().min(1),
+    policy_version: z.string().min(1),
+    proposed_action: z.string().min(1),
+    approval_state: z.string().min(1),
+    attempt_result: z.string().min(1),
+    afterstate: jsonValue,
+    stopping_reason: z.string().min(1),
+    terminal_owner: z.string().min(1),
+    incident_id: z.string().min(1).optional(),
+    payment_id: z.string().min(1).optional(),
+    details: jsonValue,
+  })
+  .strict();
+
 export const AuditEventSchema = z
   .object({
     sequence: z.number().int().positive(),
     recorded_at: timestamp,
     event_type: z.string().min(1),
-    payload: jsonValue,
+    eventType: z.string().min(1),
+    payload: AuditGovernancePayloadSchema,
   })
   .strict();
+export type AuditEvent = z.infer<typeof AuditEventSchema>;
+
+export type AuditGovernancePayload = z.infer<
+  typeof AuditGovernancePayloadSchema
+>;
+
+export function createAuditGovernancePayload(
+  eventType: string,
+  payload: unknown,
+): AuditGovernancePayload {
+  const details = jsonValue.parse(payload);
+  const record =
+    details && typeof details === "object" && !Array.isArray(details)
+      ? (details as Record<string, unknown>)
+      : {};
+  return AuditGovernancePayloadSchema.parse({
+    tenant_id:
+      typeof record.tenant_id === "string"
+        ? record.tenant_id
+        : "default-merchant",
+    actor: typeof record.actor === "string" ? record.actor : "system",
+    credential_scope:
+      typeof record.credential_scope === "string"
+        ? record.credential_scope
+        : "read-only",
+    tool_allowlist: Array.isArray(record.tool_allowlist)
+      ? record.tool_allowlist.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [],
+    evidence_provenance: Array.isArray(record.evidence_provenance)
+      ? record.evidence_provenance.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : typeof record.source === "string"
+        ? [record.source]
+        : [],
+    evidence_freshness:
+      typeof record.evidence_freshness === "string"
+        ? record.evidence_freshness
+        : typeof record.freshness === "string"
+          ? record.freshness
+          : "not_applicable",
+    policy_version:
+      typeof record.policy_version === "string"
+        ? record.policy_version
+        : "not_applicable",
+    proposed_action:
+      typeof record.proposed_action === "string"
+        ? record.proposed_action
+        : typeof record.action === "string"
+          ? record.action
+          : eventType,
+    approval_state:
+      typeof record.approval_state === "string"
+        ? record.approval_state
+        : typeof record.approval_required === "string"
+          ? "required"
+          : record.approval_required === null
+            ? "not_required"
+            : "not_applicable",
+    attempt_result:
+      typeof record.attempt_result === "string"
+        ? record.attempt_result
+        : typeof record.status === "string"
+          ? record.status
+          : eventType,
+    afterstate:
+      record.afterstate ??
+      ("after_state" in record ? record.after_state : null),
+    stopping_reason:
+      typeof record.stopping_reason === "string"
+        ? record.stopping_reason
+        : typeof record.reason === "string"
+          ? record.reason
+          : "not_terminal",
+    terminal_owner:
+      typeof record.terminal_owner === "string"
+        ? record.terminal_owner
+        : "payment-operations",
+    ...(typeof record.incident_id === "string"
+      ? { incident_id: record.incident_id }
+      : {}),
+    ...(typeof record.payment_id === "string"
+      ? { payment_id: record.payment_id }
+      : {}),
+    details,
+  });
+}
 
 export type RazorpayPayment = z.infer<typeof RazorpayPaymentSchema>;
 export type RazorpayOrder = z.infer<typeof RazorpayOrderSchema>;

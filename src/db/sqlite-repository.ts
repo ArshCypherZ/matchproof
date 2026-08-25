@@ -20,6 +20,8 @@ import {
   type AfterstateObservation,
   RecoveryOutcomeSchema,
   type IncidentBundle,
+  AuditEventSchema,
+  createAuditGovernancePayload,
 } from "../domain/schemas";
 import type {
   IncidentRepository,
@@ -340,12 +342,13 @@ export class SqliteIncidentRepository implements IncidentRepository {
       : undefined;
   }
   async audit(type: string, payload: unknown) {
+    const governancePayload = createAuditGovernancePayload(type, payload);
     const [row] = this.db
       .insert(auditEvents)
       .values({
         recordedAt: new Date().toISOString(),
         eventType: type,
-        payload: JSON.stringify(payload),
+        payload: JSON.stringify(governancePayload),
       })
       .returning({ sequence: auditEvents.sequence })
       .all();
@@ -356,7 +359,16 @@ export class SqliteIncidentRepository implements IncidentRepository {
       .select()
       .from(auditEvents)
       .orderBy(auditEvents.sequence)
-      .all();
+      .all()
+      .map((row) =>
+        AuditEventSchema.parse({
+          sequence: row.sequence,
+          recorded_at: row.recordedAt,
+          event_type: row.eventType,
+          eventType: row.eventType,
+          payload: JSON.parse(row.payload),
+        }),
+      );
   }
   async setProgress(
     incidentId: string,
