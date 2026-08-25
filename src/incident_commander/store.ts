@@ -28,12 +28,28 @@ export class IncidentStore {
   close() {
     return this.repository.close();
   }
-  ingest(input: unknown) {
-    return this.repository.ingest(
-      verifyBundle(input, this.secret),
-      this.secret,
-      this.tenantId,
-    );
+  async ingest(input: unknown) {
+    let bundle;
+    try {
+      bundle = verifyBundle(input, this.secret);
+    } catch (error) {
+      await this.repository.audit("evidence_rejected", {
+        tenant_id: this.tenantId,
+        actor: "system",
+        credential_scope: "none",
+        proposed_action: "reject_evidence",
+        approval_state: "not_required",
+        attempt_result: "rejected",
+        stopping_reason: "evidence validation failed",
+        terminal_owner: "payment-operations",
+        details: {
+          input_persisted: false,
+          error_type: error instanceof Error ? error.name : "UnknownError",
+        },
+      });
+      throw error;
+    }
+    return this.repository.ingest(bundle, this.secret, this.tenantId);
   }
   updateIncident(input: unknown) {
     return this.repository.updateIncident(verifyBundle(input, this.secret));
