@@ -16,6 +16,7 @@ import {
 import {
   IncidentStore,
   FixtureDiagnosisAdapter,
+  LiveDiagnosisAdapter,
   verifyBundle,
   reconstruct,
   evaluateAndAudit,
@@ -39,7 +40,10 @@ import {
 export type RunIncidentOptions = {
   resetState?: boolean;
   processorSecret?: string;
-  diagnosisAdapter?: FixtureDiagnosisAdapter;
+  diagnosisAdapter?: Pick<
+    FixtureDiagnosisAdapter | LiveDiagnosisAdapter,
+    "diagnose"
+  > & { provider: string; model: string };
   diagnosisMode?: string;
   evidenceGatherer?: Pick<EvidenceGatherer, "gather">;
   merchantPlatformAdapter?: MerchantPlatformAdapter;
@@ -233,11 +237,12 @@ export async function runIncident(
         model = replay
           ? parseDiagnosisOutput(progress?.details, canonicalIds)
           : parseDiagnosisOutput(
-              (opts.diagnosisAdapter ?? new FixtureDiagnosisAdapter()).diagnose(
-                bundle,
-                reconstruction,
-                reconciliation,
-              ),
+              await (
+                opts.diagnosisAdapter ??
+                (opts.mode === "live"
+                  ? new LiveDiagnosisAdapter()
+                  : new FixtureDiagnosisAdapter())
+              ).diagnose(bundle, reconstruction, reconciliation),
               canonicalIds,
             );
         recommendation = model.diagnosis.recommendation;
@@ -580,7 +585,7 @@ export async function runIncident(
     reconciliation,
     diagnosis: model.diagnosis,
     model_provenance: model.provenance,
-    diagnosis_mode: opts.diagnosisMode || "fixture",
+    diagnosis_mode: opts.diagnosisMode || opts.mode || "fixture",
     ...(loop.resumedFrom ? { resumed_from: loop.resumedFrom } : {}),
     gate_decisions: gateDecisions,
     outcome,

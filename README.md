@@ -20,6 +20,11 @@ docker compose up -d postgres
 
 Configure Razorpay Test Mode credentials in `.env` for provider checks.
 
+Live diagnosis is optional. Set `GROQ_API_KEY`, `GROQ_MODEL`, and
+`GROQ_TIMEOUT_SECONDS`, then pass `mode: "live"` to `runIncident`. Groq output
+is advisory, schema-validated, citation-checked, and falls back to the
+deterministic reconciliation recommendation on failure.
+
 ## Run
 
 ```bash

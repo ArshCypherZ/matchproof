@@ -753,6 +753,15 @@ export const DiagnosisProvenanceSchema = z
     returned_model: z.string().min(1),
     request_id: z.string().min(1),
     strict_schema: z.literal(true),
+    token_usage: z
+      .object({
+        prompt_tokens: z.number().int().nonnegative().optional(),
+        completion_tokens: z.number().int().nonnegative().optional(),
+        total_tokens: z.number().int().nonnegative().optional(),
+      })
+      .strict()
+      .optional(),
+    failure_reason: z.string().min(1).optional(),
   })
   .strict();
 export const DiagnosisOutputSchema = z

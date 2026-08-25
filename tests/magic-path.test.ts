@@ -6,10 +6,12 @@ import {
   verifyBundle,
   processorSignature,
   reconstruct,
+  reconcile,
   evaluate,
   EvidenceError,
   IncidentStore,
   FixtureDiagnosisAdapter,
+  LiveDiagnosisAdapter,
 } from "../src/incident_commander/core";
 import {
   runIncident,
@@ -329,6 +331,106 @@ describe("payment incident workflow", () => {
     expect(() => parseDiagnosisOutput(output, new Set(["EV-REQ-001"]))).toThrow(
       "EV-TIMEOUT-001 is not canonical",
     );
+  });
+  it("parses live Groq diagnosis and records provenance", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const reconciliation = reconcile(bundle);
+    const adapter = new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      model: "test-model",
+      transport: async (request) => ({
+        id: "req-live-001",
+        model: request.model,
+        choices: [
+          {
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: JSON.stringify({
+                hypotheses: [
+                  {
+                    rank: 1,
+                    summary: "Captured payment was observed after timeout.",
+                    reasoning: "Signed evidence confirms the provider event.",
+                    uncertainty: "The callback acknowledgement was lost.",
+                    confidence: 0.9,
+                    evidence_ids: ["EV-WEBHOOK-001"],
+                  },
+                ],
+                recommendation: {
+                  action: "reconcile_internal_state",
+                  reasoning:
+                    "Repair the merchant state from verified evidence.",
+                  uncertainty: "Escalate if the invariant no longer holds.",
+                  evidence_ids: ["EV-STATE-001", "EV-WEBHOOK-001"],
+                },
+              }),
+            },
+          },
+        ],
+        created: 1,
+        object: "chat.completion",
+      }),
+    });
+    const result = await adapter.diagnose(
+      bundle,
+      reconstruction,
+      reconciliation,
+    );
+    expect(result.provenance.provider).toBe("groq");
+    expect(result.provenance.request_id).toBe("req-live-001");
+  });
+  it("falls back safely when Groq is rate limited", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const reconciliation = reconcile(bundle);
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      transport: async () => {
+        throw new Error("rate limited");
+      },
+    }).diagnose(bundle, reconstruction, reconciliation);
+    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.failure_reason).toContain("rate limited");
+  });
+  it("rejects live diagnosis citations outside canonical evidence", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      transport: async () => ({
+        id: "req-live-invalid-citation",
+        model: "test-model",
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                hypotheses: [
+                  {
+                    rank: 1,
+                    summary: "Unknown evidence.",
+                    reasoning: "Unknown evidence.",
+                    uncertainty: "Citation is invalid.",
+                    confidence: 0,
+                    evidence_ids: ["EV-NOT-CANONICAL"],
+                  },
+                ],
+                recommendation: {
+                  action: "escalate",
+                  reasoning: "Operator review is required.",
+                  uncertainty: "Citation is invalid.",
+                  evidence_ids: ["EV-NOT-CANONICAL"],
+                },
+              }),
+            },
+          },
+        ],
+      }),
+    }).diagnose(bundle, reconstruction, reconcile(bundle));
+    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.failure_reason).toContain("not canonical");
   });
   it("requires governance fields when an outcome escalates", () => {
     expect(() =>
