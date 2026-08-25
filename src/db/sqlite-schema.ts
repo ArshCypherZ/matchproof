@@ -24,6 +24,45 @@ export const payments = sqliteTable(
     ),
   }),
 );
+export const merchantOrders = sqliteTable(
+  "merchant_orders",
+  {
+    orderId: text("order_id").primaryKey(),
+    paymentId: text("payment_id"),
+    state: text("state").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    paymentCorrelation: index("merchant_orders_payment_id_idx").on(
+      table.paymentId,
+    ),
+    pendingDiscovery: index("merchant_orders_state_updated_at_idx").on(
+      table.state,
+      table.updatedAt,
+    ),
+  }),
+);
+export const merchantOrderUpdates = sqliteTable(
+  "merchant_order_updates",
+  {
+    idempotencyKey: text("idempotency_key").primaryKey(),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => merchantOrders.orderId),
+    requestedState: text("requested_state").notNull(),
+    beforeState: text("before_state").notNull(),
+    afterState: text("after_state").notNull(),
+    acknowledgedAt: text("acknowledged_at").notNull(),
+  },
+  (table) => ({
+    orderCorrelation: index("merchant_order_updates_order_id_idx").on(
+      table.orderId,
+    ),
+  }),
+);
 export const incidents = sqliteTable(
   "incidents",
   {
@@ -95,6 +134,8 @@ export const incidentProgress = sqliteTable(
 );
 export const schema = {
   payments,
+  merchantOrders,
+  merchantOrderUpdates,
   incidents,
   recoveries,
   auditEvents,

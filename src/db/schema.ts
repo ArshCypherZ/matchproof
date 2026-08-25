@@ -27,6 +27,50 @@ export const payments = pgTable(
     ),
   }),
 );
+export const merchantOrders = pgTable(
+  "merchant_orders",
+  {
+    orderId: text("order_id").primaryKey(),
+    paymentId: text("payment_id"),
+    state: text("state").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    paymentCorrelation: index("merchant_orders_payment_id_idx").on(
+      table.paymentId,
+    ),
+    pendingDiscovery: index("merchant_orders_state_updated_at_idx").on(
+      table.state,
+      table.updatedAt,
+    ),
+  }),
+);
+export const merchantOrderUpdates = pgTable(
+  "merchant_order_updates",
+  {
+    idempotencyKey: text("idempotency_key").primaryKey(),
+    orderId: text("order_id").notNull(),
+    requestedState: text("requested_state").notNull(),
+    beforeState: text("before_state").notNull(),
+    afterState: text("after_state").notNull(),
+    acknowledgedAt: timestamp("acknowledged_at", {
+      withTimezone: true,
+    }).notNull(),
+  },
+  (table) => ({
+    orderCorrelation: index("merchant_order_updates_order_id_idx").on(
+      table.orderId,
+    ),
+    orderReference: foreignKey({
+      columns: [table.orderId],
+      foreignColumns: [merchantOrders.orderId],
+      name: "merchant_order_updates_order_id_merchant_orders_order_id_fk",
+    }),
+  }),
+);
 export const incidents = pgTable(
   "incidents",
   {
@@ -109,6 +153,8 @@ export const incidentProgress = pgTable(
 );
 export const schema = {
   payments,
+  merchantOrders,
+  merchantOrderUpdates,
   incidents,
   recoveries,
   auditEvents,

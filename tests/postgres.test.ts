@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { IncidentStore } from "../src/incident_commander/core";
+import { RazorpayWebhookInbox } from "../src/incident_commander/webhook";
+import { createDatabase } from "../src/db/client";
+import { merchantOrders } from "../src/db/schema";
+import { PostgresMerchantPlatformAdapter } from "../src/db/postgres-merchant-platform-adapter";
 
 const fixture = path.resolve("fixtures/timeout_after_mutation.json");
 const secret = "test-prototype-secret";
@@ -70,7 +75,96 @@ describe.skipIf(process.env.RUN_POSTGRES_TESTS !== "1")(
       });
       expect(first.status).toBe("accepted");
       expect(second.status).toBe("duplicate");
+      const webhookSecret = "postgres-webhook-secret";
+      const body = JSON.stringify({
+        event: "payment.captured",
+        payload: {
+          payment: {
+            entity: {
+              id: "pay_demo_001",
+              status: "captured",
+              captured: true,
+              amount: 125000,
+              currency: "INR",
+              order_id: "order_demo_001",
+              created_at: Math.floor(
+                Date.parse("2026-08-21T10:00:04.000Z") / 1000,
+              ),
+            },
+          },
+        },
+      });
+      const inbox = new RazorpayWebhookInbox(store);
+      await inbox.ingest({
+        rawBody: body,
+        signature: crypto
+          .createHmac("sha256", webhookSecret)
+          .update(body)
+          .digest("hex"),
+        eventId: "evt_postgres_bridge_123",
+        receivedAt: "2026-08-24T00:00:00.000Z",
+        webhookSecret,
+      });
+      await expect(
+        inbox.process("evt_postgres_bridge_123", {
+          webhookSecret,
+          processorSecret: secret,
+        }),
+      ).resolves.toMatchObject({
+        status: "updated",
+        incidentId: "inc_timeout_after_capture_001",
+      });
       await store.close();
+    });
+
+    it("updates merchant order state with idempotency and read-after-write", async () => {
+      const store = new IncidentStore(postgresUrl, true, secret);
+      await store.initialize();
+      await store.close();
+      const connection = createDatabase(postgresUrl);
+      const now = new Date("2026-08-25T12:00:00.000Z");
+      try {
+        await connection.db.insert(merchantOrders).values({
+          orderId: "merchant_postgres_001",
+          paymentId: "pay_postgres_001",
+          state: "pending",
+          amountMinor: 125000,
+          currency: "INR",
+          createdAt: new Date("2026-08-25T09:00:00.000Z"),
+          updatedAt: new Date("2026-08-25T09:00:00.000Z"),
+        });
+        const adapter = new PostgresMerchantPlatformAdapter(
+          connection.db,
+          () => now,
+        );
+
+        await expect(
+          adapter.listPendingOrders(new Date("2026-08-25T10:00:00.000Z"), 10),
+        ).resolves.toEqual([
+          expect.objectContaining({ order_id: "merchant_postgres_001" }),
+        ]);
+        const updated = await adapter.updateOrderState(
+          "merchant_postgres_001",
+          "paid",
+          "merchant:postgres:001",
+        );
+        const replay = await adapter.updateOrderState(
+          "merchant_postgres_001",
+          "paid",
+          "merchant:postgres:001",
+        );
+
+        expect(updated).toMatchObject({
+          acknowledgement: { status: "updated" },
+          observation: { state: "paid" },
+        });
+        expect(replay).toMatchObject({
+          acknowledgement: { status: "already_applied" },
+          observation: { state: "paid" },
+        });
+      } finally {
+        await connection.pool.end();
+      }
     });
   },
 );
