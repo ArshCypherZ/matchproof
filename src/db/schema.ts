@@ -75,11 +75,13 @@ export const incidents = pgTable(
   "incidents",
   {
     incidentId: text("incident_id").primaryKey(),
+    tenantId: text("tenant_id").notNull().default("default-merchant"),
     paymentId: text("payment_id").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     bundle: jsonb("bundle").notNull(),
   },
   (table) => ({
+    tenantCorrelation: index("incidents_tenant_id_idx").on(table.tenantId),
     paymentCorrelation: index("incidents_payment_id_idx").on(table.paymentId),
     operationCorrelation: index("incidents_idempotency_key_idx").on(
       table.idempotencyKey,

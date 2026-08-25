@@ -155,7 +155,11 @@ export type RecoveryAttempt = {
 export interface IncidentRepository {
   initialize(reset: boolean): Promise<void>;
   close(): Promise<void>;
-  ingest(bundle: IncidentBundle, secret?: string): Promise<void>;
+  ingest(
+    bundle: IncidentBundle,
+    secret?: string,
+    tenantId?: string,
+  ): Promise<void>;
   updateIncident(bundle: IncidentBundle): Promise<void>;
   incident(id: string, secret?: string): Promise<IncidentBundle | null>;
   incidentByPaymentId(paymentId: string): Promise<IncidentBundle | null>;
@@ -203,4 +207,6 @@ export interface IncidentRepository {
     input: WebhookProcessingInput,
     validateBundle: IncidentBundleValidator,
   ): Promise<WebhookProcessingResult>;
+  listIncidents(tenantId: string): Promise<IncidentBundle[]>;
+  incidentTenant(id: string): Promise<string | undefined>;
 }

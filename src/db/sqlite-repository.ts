@@ -86,7 +86,11 @@ export class SqliteIncidentRepository implements IncidentRepository {
   async close() {
     this.connection.client.close();
   }
-  async ingest(bundle: IncidentBundle) {
+  async ingest(
+    bundle: IncidentBundle,
+    _secret?: string,
+    tenantId = "default-merchant",
+  ) {
     const seed = derivePaymentSeed(bundle);
     this.connection.client.transaction(() => {
       if (seed)
@@ -107,6 +111,7 @@ export class SqliteIncidentRepository implements IncidentRepository {
         .insert(incidents)
         .values({
           incidentId: bundle.incident_id,
+          tenantId,
           paymentId: bundle.payment_id,
           idempotencyKey: bundle.idempotency_key,
           bundle: JSON.stringify(bundle),
@@ -156,6 +161,22 @@ export class SqliteIncidentRepository implements IncidentRepository {
       .where(eq(incidents.incidentId, id))
       .all();
     return row ? IncidentBundleSchema.parse(JSON.parse(row.bundle)) : null;
+  }
+  async listIncidents(tenantId: string) {
+    return this.db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.tenantId, tenantId))
+      .all()
+      .map((row) => IncidentBundleSchema.parse(JSON.parse(row.bundle)));
+  }
+  async incidentTenant(id: string) {
+    const [row] = this.db
+      .select({ tenantId: incidents.tenantId })
+      .from(incidents)
+      .where(eq(incidents.incidentId, id))
+      .all();
+    return row?.tenantId;
   }
   async updateIncident(bundle: IncidentBundle) {
     this.connection.client.transaction(() => {

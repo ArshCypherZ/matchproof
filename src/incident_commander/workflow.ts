@@ -138,7 +138,12 @@ export async function runIncident(
   const initialBundle = verifyBundle(raw, secret);
   if (opts.mode === "live" && !opts.evidenceGatherer)
     throw new Error("live mode requires a provider evidence gatherer");
-  const store = new IncidentStore(state, opts.resetState ?? false, secret);
+  const store = new IncidentStore(
+    state,
+    opts.resetState ?? false,
+    secret,
+    opts.tenantId ?? "default-merchant",
+  );
   await store.initialize();
   await store.ingest(initialBundle);
 

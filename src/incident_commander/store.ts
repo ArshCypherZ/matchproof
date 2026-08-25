@@ -9,6 +9,7 @@ export class IncidentStore {
     readonly statePath: string,
     private readonly reset = false,
     readonly secret?: string,
+    readonly tenantId = "default-merchant",
   ) {
     const postgres =
       statePath === "postgresql" ||
@@ -28,7 +29,11 @@ export class IncidentStore {
     return this.repository.close();
   }
   ingest(input: unknown) {
-    return this.repository.ingest(verifyBundle(input, this.secret));
+    return this.repository.ingest(
+      verifyBundle(input, this.secret),
+      this.secret,
+      this.tenantId,
+    );
   }
   updateIncident(input: unknown) {
     return this.repository.updateIncident(verifyBundle(input, this.secret));
@@ -107,5 +112,11 @@ export class IncidentStore {
     return this.repository.processWebhookEvidence(input, (bundle) =>
       verifyBundle(bundle, this.secret),
     );
+  }
+  listIncidents(...args: Parameters<IncidentRepository["listIncidents"]>) {
+    return this.repository.listIncidents(...args);
+  }
+  incidentTenant(...args: Parameters<IncidentRepository["incidentTenant"]>) {
+    return this.repository.incidentTenant(...args);
   }
 }

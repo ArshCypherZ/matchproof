@@ -92,7 +92,11 @@ export class PostgresIncidentRepository implements IncidentRepository {
     await this.connection.pool.end();
   }
 
-  async ingest(bundle: IncidentBundle) {
+  async ingest(
+    bundle: IncidentBundle,
+    _secret?: string,
+    tenantId = "default-merchant",
+  ) {
     const seed = derivePaymentSeed(bundle);
     await this.db.transaction(async (tx) => {
       if (seed) {
@@ -113,6 +117,7 @@ export class PostgresIncidentRepository implements IncidentRepository {
         .insert(incidents)
         .values({
           incidentId: bundle.incident_id,
+          tenantId,
           paymentId: bundle.payment_id,
           idempotencyKey: bundle.idempotency_key,
           bundle,
@@ -159,6 +164,20 @@ export class PostgresIncidentRepository implements IncidentRepository {
       .where(eq(incidents.incidentId, id));
     if (!row) return null;
     return IncidentBundleSchema.parse(row.bundle);
+  }
+  async listIncidents(tenantId: string) {
+    const rows = await this.db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.tenantId, tenantId));
+    return rows.map((row) => IncidentBundleSchema.parse(row.bundle));
+  }
+  async incidentTenant(id: string) {
+    const [row] = await this.db
+      .select({ tenantId: incidents.tenantId })
+      .from(incidents)
+      .where(eq(incidents.incidentId, id));
+    return row?.tenantId;
   }
   async updateIncident(bundle: IncidentBundle) {
     await this.db.transaction(async (tx) => {

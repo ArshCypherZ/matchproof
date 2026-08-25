@@ -67,6 +67,7 @@ export const incidents = sqliteTable(
   "incidents",
   {
     incidentId: text("incident_id").primaryKey(),
+    tenantId: text("tenant_id").notNull().default("default-merchant"),
     paymentId: text("payment_id")
       .notNull()
       .references(() => payments.paymentId),
@@ -74,6 +75,7 @@ export const incidents = sqliteTable(
     bundle: text("bundle").notNull(),
   },
   (table) => ({
+    tenantCorrelation: index("incidents_tenant_id_idx").on(table.tenantId),
     paymentCorrelation: index("incidents_payment_id_idx").on(table.paymentId),
     operationCorrelation: index("incidents_idempotency_key_idx").on(
       table.idempotencyKey,
