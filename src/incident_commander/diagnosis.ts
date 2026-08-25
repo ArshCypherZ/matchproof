@@ -1,13 +1,18 @@
 import {
   DiagnosisOutputSchema,
   type IncidentBundle,
+  type ReconciliationResult,
   type Reconstruction,
 } from "../domain/schemas";
 
 export class FixtureDiagnosisAdapter {
   provider = "fixture";
   model = "fixture-diagnosis-v1";
-  diagnose(_bundle?: IncidentBundle, _reconstruction?: Reconstruction) {
+  diagnose(
+    _bundle?: IncidentBundle,
+    _reconstruction?: Reconstruction,
+    _reconciliation?: ReconciliationResult,
+  ) {
     return DiagnosisOutputSchema.parse({
       diagnosis: {
         hypotheses: [

@@ -1,136 +1,35 @@
-# O2 — Financial AI Incident Commander
+# Payment Operations Controller
 
-O2 reconstructs an ambiguous payment incident, adds an evidence-grounded AI
-diagnosis, and lets deterministic controls authorize a bounded, auditable
-merchant-state reconciliation.
+Payment Operations Controller helps teams investigate payment and order
+exceptions, verify supporting evidence, and resolve or escalate outstanding
+cases.
 
-Canonical implementation context:
+## Requirements
 
-- `docs/PROBLEM.md` defines the payment-to-order exception problem and evidence
-  limits.
-- `docs/SOLUTION.md` defines the selected controller, safety boundary, closed
-  loop, and evaluation gates.
+- Node.js 22.13 or newer
+- pnpm 11 or newer
+- PostgreSQL
 
-## Prerequisites
-
-- Node.js 22.13+ (the current supported Next.js runtime range)
-- pnpm 11+
-
-## Local PostgreSQL
-
-The development database uses the official default `postgres:latest` image and
-is exposed on host port `9998`:
-
-```bash
-docker compose up -d postgres
-```
-
-Set `DATABASE_URL=postgres://incident:incident@localhost:9998/incident_commander`.
-
-## Offline fixture rehearsal
+## Setup
 
 ```bash
 pnpm install
-pnpm run demo -- --mode fixture
+cp .env.example .env
+docker compose up -d postgres
 ```
 
-The run uses the checked-in timeout-after-mutation fixture, a local SQLite
-database by default, and the fixture diagnosis adapter. It runs offline and without
-`GROQ_API_KEY`; the output is labeled `FIXTURE / REHEARSAL`.
+Configure Razorpay Test Mode credentials in `.env` for provider checks.
 
-## Fixture and live modes
-
-- **Fixture:** deterministic local rehearsal, labeled `FIXTURE / REHEARSAL`.
-- **Live:** Groq model path with configured credentials and network access; output
-  includes provider, model, request, and usage provenance. A live error is reported
-  as an error.
-
-## Live Groq diagnosis
-
-Create an ignored `.env` file (or export the variables) with:
-
-```text
-GROQ_API_KEY=your_key
-GROQ_MODEL=openai/gpt-oss-20b
-GROQ_REASONING_EFFORT=medium
-GROQ_TIMEOUT_SECONDS=20
-PROCESSOR_WEBHOOK_SECRET=test-prototype-secret
-RAZORPAY_API_KEY=rzp_test_your_key_id
-RAZORPAY_API_SECRET=your_test_key_secret
-RAZORPAY_WEBHOOK_SECRET=your_test_webhook_secret
-```
-
-Run:
+## Run
 
 ```bash
-pnpm run demo -- --mode live
-```
-
-## Razorpay Test-mode adapter
-
-The maintained `razorpay` Node SDK (`2.9.8`) is used for authenticated
-Test-mode order and payment operations. The adapter rejects live keys before a
-network call and keeps amounts in paise:
-
-```ts
-import {
-  createTestModeOrder,
-  fetchTestModeOrder,
-  fetchTestModeOrderPayments,
-  fetchTestModePaymentStatus,
-  verifyRazorpayWebhookSignature,
-} from "./src/incident_commander/razorpay";
-
-const order = await createTestModeOrder({ amount: 500, currency: "INR" });
-const providerOrder = await fetchTestModeOrder(order.id);
-const orderPayments = await fetchTestModeOrderPayments(order.id);
-const payment = await fetchTestModePaymentStatus("pay_test_id");
-```
-
-Webhook handlers must pass the untouched request body and the
-`X-Razorpay-Signature` header to `verifyRazorpayWebhookSignature`. Do not
-parse and reserialize the body before verification. The SDK's official
-HMAC-SHA256 implementation is used, and missing webhook secrets fail closed.
-
-`pnpm run razorpay:verify` performs a read-only Test-mode connectivity check
-using `RAZORPAY_API_KEY` and `RAZORPAY_API_SECRET` from `.env` or the process
-environment. Creating orders and fetching payments are exposed as library
-operations so an application can add its own approval, persistence, and
-afterstate checks around each provider call.
-
-## Webhook ingestion slice
-
-Webhook endpoint contract:
-
-- `POST /webhooks/razorpay`;
-- raw request body plus `X-Razorpay-Signature` and `X-Razorpay-Event-Id` headers;
-- `200 {"status":"accepted"}` for a newly verified event;
-- `200 {"status":"duplicate"}` when the exact event was already stored;
-- `400` for missing, forged, malformed, or invalid events;
-- `409` when an event ID is reused with different signed evidence;
-- `413` when the request exceeds the 1 MB body limit.
-
-`RazorpayWebhookInbox` stores the verified raw body, signature, event type,
-event ID, and receive timestamps durably. Signature verification happens
-before JSON parsing and persistence. The inbox stores verified events. Order
-reconciliation and fulfilment are separate policy-controlled steps.
-
-The durable `payments` row is the controller's correlation and observed-state
-record. It is not a replacement for the provider payment object or the
-merchant order record; those remain distinct evidence sources.
-
-Run the local webhook listener on port `9999`:
-
-```bash
+pnpm run demo -- --mode fixture --state /tmp/payment-operations.sqlite3
 pnpm run razorpay:webhook-server
 ```
 
-It listens on `0.0.0.0:9999` and stores events in the configured durable inbox.
-Your ngrok forwarding target should be
-`http://localhost:9999`, and the Razorpay webhook URL should end in
-`/webhooks/razorpay`.
+The webhook endpoint is `POST /webhooks/razorpay`.
 
-## Verification
+## Verify
 
 ```bash
 pnpm test
@@ -138,10 +37,5 @@ pnpm run test:postgres
 pnpm run typecheck
 pnpm run lint
 pnpm run format:check
-pnpm run demo -- --mode fixture
+pnpm run build
 ```
-
-`better-sqlite3` is the Drizzle driver for deterministic, offline fixture
-rehearsals. PostgreSQL is the durable live/server backend. Drizzle migration
-files are append-only history. New schema changes are added through
-`pnpm run db:generate`.

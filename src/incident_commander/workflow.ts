@@ -10,7 +10,9 @@ import {
   verifyBundle,
   reconstruct,
   evaluate,
+  reconcile,
 } from "./core";
+import type { EvidenceGatherer } from "./evidence-gatherer";
 export async function runIncident(
   fixture: string,
   state: string,
@@ -19,19 +21,37 @@ export async function runIncident(
     processorSecret?: string;
     diagnosisAdapter?: FixtureDiagnosisAdapter;
     diagnosisMode?: string;
+    evidenceGatherer?: EvidenceGatherer;
   } = {},
 ) {
   const raw: unknown = JSON.parse(fs.readFileSync(fixture, "utf8"));
+  const initialBundle = verifyBundle(
+    raw,
+    opts.processorSecret ?? "test-prototype-secret",
+  );
+  const merchantOrderId = initialBundle.evidence.find(
+    (entry) => entry.kind === "merchant_order_state",
+  )?.payload.order_id;
+  const gatheredEvidence = opts.evidenceGatherer
+    ? await opts.evidenceGatherer.gather({
+        paymentId: initialBundle.payment_id,
+        ...(merchantOrderId ? { orderId: merchantOrderId } : {}),
+        idempotencyKey: initialBundle.idempotency_key,
+      })
+    : [];
+  const bundle = verifyBundle(
+    {
+      ...initialBundle,
+      evidence: [...initialBundle.evidence, ...gatheredEvidence],
+    },
+    opts.processorSecret ?? "test-prototype-secret",
+  );
   const store = new IncidentStore(
     state,
     opts.resetState ?? false,
     opts.processorSecret ?? "test-prototype-secret",
   );
   await store.initialize();
-  const bundle = verifyBundle(
-    raw,
-    opts.processorSecret ?? "test-prototype-secret",
-  );
   await store.ingest(bundle);
   const resumeFrom = (await store.latestProgress(bundle.incident_id))?.step;
   const completedSteps = new Set(
@@ -44,20 +64,30 @@ export async function runIncident(
     await store.setProgress(bundle.incident_id, step, "completed", details);
     completedSteps.add(step);
   };
-  await markCompleted("gather", { evidence_count: bundle.evidence.length });
+  await markCompleted("gather", {
+    evidence_count: bundle.evidence.length,
+    provider_evidence_count: gatheredEvidence.length,
+  });
   const saved = await store.incident(bundle.incident_id);
   if (!saved)
     throw new Error(`incident ${bundle.incident_id} was not persisted`);
   const recon = reconstruct(saved);
+  const reconciliation = reconcile(saved);
   await markCompleted("reconcile", { current_state: recon.current_state });
   const adapter = opts.diagnosisAdapter ?? new FixtureDiagnosisAdapter();
   const model = parseDiagnosisOutput(
-    adapter.diagnose(saved, recon),
+    adapter.diagnose(saved, recon, reconciliation),
     new Set(recon.timeline.map((entry) => entry.evidence_id)),
   );
   await markCompleted("diagnose", { provider: model.provenance.provider });
   const rec = model.diagnosis.recommendation;
-  let dec = evaluate(rec, saved, recon, await store.payment(saved.payment_id));
+  let dec = evaluate(
+    rec,
+    saved,
+    recon,
+    await store.payment(saved.payment_id),
+    reconciliation,
+  );
   const gateDecisions = [dec];
   await markCompleted("gate", { allowed: dec.allowed });
   let recommendation = rec;
@@ -73,6 +103,7 @@ export async function runIncident(
       saved,
       recon,
       await store.payment(saved.payment_id),
+      reconciliation,
     );
     gateDecisions.push(dec);
   }
@@ -149,6 +180,7 @@ export async function runIncident(
   return {
     bundle: saved,
     reconstruction: recon,
+    reconciliation,
     diagnosis: model.diagnosis,
     model_provenance: model.provenance,
     diagnosis_mode: opts.diagnosisMode || "fixture",

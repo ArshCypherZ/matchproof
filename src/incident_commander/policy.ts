@@ -5,6 +5,7 @@ import {
   type DiagnosisOutput,
   type IncidentBundle,
   type Reconstruction,
+  type ReconciliationResult,
 } from "../domain/schemas";
 
 export function evaluate(
@@ -12,6 +13,7 @@ export function evaluate(
   _bundle: IncidentBundle,
   reconstruction: Reconstruction,
   _merchant?: unknown,
+  reconciliation?: ReconciliationResult,
 ) {
   const decision = (action: Action, allowed: boolean, reason: string) =>
     PolicyGateDecisionSchema.parse({ action, allowed, reason });
@@ -43,7 +45,10 @@ export function evaluate(
     action === "reconcile_internal_state" &&
     (reconstruction.ambiguity_reasons.length ||
       !VerifiedPaymentStateSchema.safeParse(reconstruction.current_state)
-        .success)
+        .success ||
+      (reconciliation !== undefined &&
+        (reconciliation.resolution !== "reconcile_internal_state" ||
+          !reconciliation.deterministic_resolution)))
   )
     return decision(
       recommendation.action,
