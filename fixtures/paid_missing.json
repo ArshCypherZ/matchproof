@@ -1,0 +1,26 @@
+{
+  "incident_id": "inc_paid_missing_001",
+  "payment_id": "pay_paid_missing_001",
+  "idempotency_key": "paid-missing-001",
+  "evidence": [
+    {
+      "evidence_id": "EV-PAID-MISSING-WEBHOOK",
+      "kind": "processor_webhook",
+      "occurred_at": "2026-08-21T10:00:01.000Z",
+      "received_at": "2026-08-21T10:00:02.000Z",
+      "source": "processor-webhook",
+      "processor_signature": "16b67a7e159dd8393d0b60ef55d7ad69923c2d134243b5984dd4783b68ff858c",
+      "payload": {
+        "event_id": "evt_paid_missing_001",
+        "event_type": "payment.captured",
+        "payment_id": "pay_paid_missing_001",
+        "payment_state": "captured",
+        "amount_minor": 2000,
+        "currency": "INR",
+        "idempotency_key": "paid-missing-001",
+        "signature_verified": true,
+        "operation": "capture"
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "incident_id": "inc_webhook_failure_001",
+  "payment_id": "pay_delivery_001",
+  "idempotency_key": "delivery-failure-001",
+  "evidence": [
+    {
+      "evidence_id": "EV-DELIVERY-WEBHOOK",
+      "kind": "processor_webhook",
+      "occurred_at": "2026-08-21T10:00:01.000Z",
+      "received_at": "2026-08-21T10:00:02.000Z",
+      "source": "processor-webhook",
+      "processor_signature": "cafc9cff7bcccac4fb6a7f02fd603fd8a7670262e0a4b41b12dfe07af68ec573",
+      "payload": {
+        "event_id": "evt_delivery_001",
+        "event_type": "payment.captured",
+        "payment_id": "pay_delivery_001",
+        "payment_state": "captured",
+        "amount_minor": 5000,
+        "currency": "INR",
+        "idempotency_key": "delivery-failure-001",
+        "signature_verified": true,
+        "operation": "capture"
+      }
+    },
+    {
+      "evidence_id": "EV-DELIVERY-TIMEOUT",
+      "kind": "webhook_delivery",
+      "occurred_at": "2026-08-21T10:00:03.000Z",
+      "received_at": "2026-08-21T10:00:03.000Z",
+      "source": "controller-log",
+      "payload": {
+        "payment_id": "pay_delivery_001",
+        "delivery_status": "timeout",
+        "operation": "capture",
+        "idempotency_key": "delivery-failure-001"
+      }
+    }
+  ]
+}

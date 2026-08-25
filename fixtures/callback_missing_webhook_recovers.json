@@ -1,0 +1,39 @@
+{
+  "incident_id": "inc_callback_recovery_001",
+  "payment_id": "pay_callback_001",
+  "idempotency_key": "callback-recover-001",
+  "evidence": [
+    {
+      "evidence_id": "EV-CALLBACK-WEBHOOK",
+      "kind": "processor_webhook",
+      "occurred_at": "2026-08-21T10:00:01.000Z",
+      "received_at": "2026-08-21T10:00:02.000Z",
+      "source": "processor-webhook",
+      "processor_signature": "7375102cebb89bb7ffa704c609d56247280edd8bf7c96021c53ecd79715d337f",
+      "payload": {
+        "event_id": "evt_callback_001",
+        "event_type": "payment.captured",
+        "payment_id": "pay_callback_001",
+        "payment_state": "captured",
+        "amount_minor": 4000,
+        "currency": "INR",
+        "idempotency_key": "callback-recover-001",
+        "signature_verified": true,
+        "operation": "capture"
+      }
+    },
+    {
+      "evidence_id": "EV-CALLBACK-MISSING",
+      "kind": "callback_observation",
+      "occurred_at": "2026-08-21T10:00:03.000Z",
+      "received_at": "2026-08-21T10:00:03.000Z",
+      "source": "merchant-payment-service",
+      "payload": {
+        "payment_id": "pay_callback_001",
+        "callback_status": "missing",
+        "operation": "capture",
+        "idempotency_key": "callback-recover-001"
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "incident_id": "inc_paid_pending_001",
+  "payment_id": "pay_paid_pending_001",
+  "idempotency_key": "paid-pending-001",
+  "evidence": [
+    {
+      "evidence_id": "EV-PAID-PENDING-WEBHOOK",
+      "kind": "processor_webhook",
+      "occurred_at": "2026-08-21T10:00:01.000Z",
+      "received_at": "2026-08-21T10:00:02.000Z",
+      "source": "processor-webhook",
+      "processor_signature": "2eb946862dce2beeea785b2c4c0cb010356a9748b5cfec269671b11df16f055d",
+      "payload": {
+        "event_id": "evt_paid_pending_001",
+        "event_type": "payment.captured",
+        "payment_id": "pay_paid_pending_001",
+        "payment_state": "captured",
+        "amount_minor": 1000,
+        "currency": "INR",
+        "idempotency_key": "paid-pending-001",
+        "signature_verified": true,
+        "operation": "capture"
+      }
+    },
+    {
+      "evidence_id": "EV-PAID-PENDING-ORDER",
+      "kind": "merchant_order_state",
+      "occurred_at": "2026-08-21T10:00:03.000Z",
+      "received_at": "2026-08-21T10:00:03.000Z",
+      "source": "merchant-order-store",
+      "payload": {
+        "payment_id": "pay_paid_pending_001",
+        "order_id": "order_paid_pending_001",
+        "order_state": "pending",
+        "amount_minor": 1000,
+        "currency": "INR",
+        "operation": "capture",
+        "idempotency_key": "paid-pending-001"
+      }
+    }
+  ]
+}

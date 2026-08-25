@@ -1,0 +1,57 @@
+{
+  "incident_id": "inc_settlement_exception_001",
+  "payment_id": "pay_settlement_001",
+  "idempotency_key": "settlement-exception-001",
+  "evidence": [
+    {
+      "evidence_id": "EV-SETTLEMENT-WEBHOOK",
+      "kind": "processor_webhook",
+      "occurred_at": "2026-08-21T10:00:01.000Z",
+      "received_at": "2026-08-21T10:00:02.000Z",
+      "source": "processor-webhook",
+      "processor_signature": "77fcb2ec76f890e423444406f17b72e9ce0611d717fd4b170cc0feb603112f2a",
+      "payload": {
+        "event_id": "evt_settlement_001",
+        "event_type": "payment.captured",
+        "payment_id": "pay_settlement_001",
+        "payment_state": "captured",
+        "amount_minor": 8000,
+        "currency": "INR",
+        "idempotency_key": "settlement-exception-001",
+        "signature_verified": true,
+        "operation": "capture"
+      }
+    },
+    {
+      "evidence_id": "EV-SETTLEMENT-ORDER",
+      "kind": "merchant_order_state",
+      "occurred_at": "2026-08-21T10:00:03.000Z",
+      "received_at": "2026-08-21T10:00:03.000Z",
+      "source": "merchant-order-store",
+      "payload": {
+        "payment_id": "pay_settlement_001",
+        "order_id": "order_settlement_001",
+        "order_state": "paid",
+        "amount_minor": 8000,
+        "currency": "INR",
+        "operation": "capture",
+        "idempotency_key": "settlement-exception-001"
+      }
+    },
+    {
+      "evidence_id": "EV-SETTLEMENT-MISSING",
+      "kind": "settlement_observation",
+      "occurred_at": "2026-08-21T10:00:03.000Z",
+      "received_at": "2026-08-21T10:00:03.000Z",
+      "source": "processor-api",
+      "payload": {
+        "payment_id": "pay_settlement_001",
+        "settlement_status": "missing",
+        "amount_minor": 8000,
+        "currency": "INR",
+        "operation": "read",
+        "idempotency_key": "settlement-exception-001"
+      }
+    }
+  ]
+}

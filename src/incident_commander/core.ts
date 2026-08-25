@@ -2,6 +2,8 @@ export * from "./errors";
 export * from "./signatures";
 export * from "./validation";
 export * from "./reconstruction";
+export * from "./reconciliation";
 export * from "./policy";
 export * from "./diagnosis";
 export * from "./store";
+export * from "./evidence-gatherer";

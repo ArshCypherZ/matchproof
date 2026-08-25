@@ -1,0 +1,41 @@
+{
+  "incident_id": "inc_late_authorized_001",
+  "payment_id": "pay_late_001",
+  "idempotency_key": "late-authorized-001",
+  "evidence": [
+    {
+      "evidence_id": "EV-LATE-CREATED",
+      "kind": "internal_state",
+      "occurred_at": "2026-08-21T09:59:59.000Z",
+      "received_at": "2026-08-21T09:59:59.000Z",
+      "source": "merchant-payment-service",
+      "payload": {
+        "payment_id": "pay_late_001",
+        "payment_state": "created",
+        "amount_minor": 6000,
+        "currency": "INR",
+        "operation": "authorize",
+        "last_operation_key": "late-authorized-001"
+      }
+    },
+    {
+      "evidence_id": "EV-LATE-AUTHORIZED",
+      "kind": "processor_webhook",
+      "occurred_at": "2026-08-21T10:00:01.000Z",
+      "received_at": "2026-08-21T10:00:02.000Z",
+      "source": "processor-webhook",
+      "processor_signature": "4a2605678e9a485b172c3c9b83c74b897043fc9c393fcd74fa815bc5daa1c481",
+      "payload": {
+        "event_id": "evt_late_001",
+        "event_type": "payment.authorized",
+        "payment_id": "pay_late_001",
+        "payment_state": "authorized",
+        "amount_minor": 6000,
+        "currency": "INR",
+        "idempotency_key": "late-authorized-001",
+        "signature_verified": true,
+        "operation": "authorize"
+      }
+    }
+  ]
+}

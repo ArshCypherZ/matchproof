@@ -1,10 +1,106 @@
 import {
+  type IncidentClass,
   IncidentBundleSchema,
   type Evidence,
   type IncidentBundle,
 } from "../domain/schemas";
 import { EvidenceError } from "./errors";
 import { verifyProcessorSignature, type SignaturePayload } from "./signatures";
+
+export function classifyIncident(bundle: IncidentBundle): IncidentClass {
+  const evidence = bundle.evidence;
+  const webhooks = evidence.filter(
+    (entry): entry is Extract<Evidence, { kind: "processor_webhook" }> =>
+      entry.kind === "processor_webhook",
+  );
+  const paymentFetches = evidence
+    .filter(
+      (entry): entry is Extract<Evidence, { kind: "provider_payment_fetch" }> =>
+        entry.kind === "provider_payment_fetch",
+    )
+    .filter(
+      (entry): entry is typeof entry & { payload: { result: "success" } } =>
+        entry.payload.result === "success",
+    );
+  const orders = evidence.filter(
+    (entry): entry is Extract<Evidence, { kind: "merchant_order_state" }> =>
+      entry.kind === "merchant_order_state",
+  );
+  const deliveryFailure = evidence.some(
+    (entry) =>
+      entry.kind === "webhook_delivery" &&
+      entry.payload.delivery_status !== "received",
+  );
+  const capturedOrPaid =
+    webhooks.some((entry) =>
+      ["captured", "paid"].includes(entry.payload.payment_state),
+    ) || paymentFetches.some((entry) => entry.payload.status === "captured");
+  const providerAmount =
+    webhooks.find((webhook) =>
+      ["captured", "paid"].includes(webhook.payload.payment_state),
+    )?.payload.amount_minor ??
+    paymentFetches.find((entry) => entry.payload.status === "captured")?.payload
+      .amount_minor;
+  const providerCurrency =
+    webhooks.find((webhook) =>
+      ["captured", "paid"].includes(webhook.payload.payment_state),
+    )?.payload.currency ??
+    paymentFetches.find((entry) => entry.payload.status === "captured")?.payload
+      .currency;
+  const hasMatchedMerchantOrder = orders.some(
+    (entry) =>
+      ["paid", "fulfilled"].includes(entry.payload.order_state) &&
+      entry.payload.amount_minor === providerAmount &&
+      entry.payload.currency === providerCurrency,
+  );
+  const hasTimeout = evidence.some(
+    (entry) =>
+      entry.kind === "processor_timeout" &&
+      entry.payload.operation === "capture",
+  );
+
+  if (new Set(orders.map((entry) => entry.payload.order_id)).size > 1)
+    return "one_payment_two_orders";
+  if (
+    evidence.some(
+      (entry) =>
+        entry.kind === "settlement_observation" &&
+        entry.payload.settlement_status !== "settled",
+    ) &&
+    capturedOrPaid &&
+    hasMatchedMerchantOrder
+  )
+    return "settlement_exception";
+  if (deliveryFailure) return "webhook_delivery_failure";
+  if (hasTimeout) return "capture_timeout";
+  if (
+    evidence.some(
+      (entry) =>
+        entry.kind === "callback_observation" &&
+        entry.payload.callback_status === "missing",
+    ) &&
+    capturedOrPaid
+  )
+    return "callback_missing_webhook_recovers";
+  if (
+    capturedOrPaid &&
+    orders.some((entry) => entry.payload.order_state === "pending")
+  )
+    return "paid_pending";
+  if (
+    webhooks.some((entry) => entry.payload.payment_state === "authorized") ||
+    paymentFetches.some((entry) => entry.payload.status === "authorized")
+  )
+    return "late_authorized";
+  if (
+    capturedOrPaid &&
+    !evidence.some((entry) => entry.kind === "internal_state") &&
+    (orders.length === 0 ||
+      orders.every((entry) => entry.payload.order_state === "missing"))
+  )
+    return "paid_missing";
+  throw new EvidenceError("evidence does not match a bounded incident class");
+}
 
 export function verifyBundle(
   input: unknown,
@@ -39,6 +135,23 @@ export function verifyBundle(
     paymentRequest && "currency" in paymentRequest.payload
       ? paymentRequest.payload.currency
       : undefined;
+  const financialEvidence = bundle.evidence.filter(
+    (
+      evidence,
+    ): evidence is Extract<
+      Evidence,
+      { payload: { amount_minor: number; currency: string } }
+    > => "amount_minor" in evidence.payload && "currency" in evidence.payload,
+  );
+  if (
+    new Set(financialEvidence.map((evidence) => evidence.payload.amount_minor))
+      .size > 1 ||
+    new Set(financialEvidence.map((evidence) => evidence.payload.currency))
+      .size > 1
+  )
+    throw new EvidenceError(
+      "financial amount or currency conflicts across evidence",
+    );
   for (const evidence of bundle.evidence) {
     const payload = evidence.payload;
     if ("payment_id" in payload && payload.payment_id !== bundle.payment_id)
@@ -124,9 +237,24 @@ export function verifyBundle(
       )
       .map((evidence) => evidence.payload.payment_state),
   );
+  for (const evidence of bundle.evidence) {
+    if (
+      evidence.kind === "provider_payment_fetch" &&
+      evidence.payload.result === "success"
+    )
+      outcomes.add(evidence.payload.status);
+  }
   if (outcomes.has("captured") && outcomes.has("failed"))
     throw new EvidenceError(
       "contradictory processor outcomes cannot be accepted",
+    );
+  const incidentClass = classifyIncident(bundle);
+  if (
+    incidentClass === "paid_missing" &&
+    bundle.evidence.some((evidence) => evidence.kind === "internal_state")
+  )
+    throw new EvidenceError(
+      "paid_missing evidence must not contain internal state",
     );
   return Object.freeze(bundle);
 }

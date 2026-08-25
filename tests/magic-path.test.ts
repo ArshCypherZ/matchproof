@@ -16,19 +16,164 @@ import {
   parseDiagnosisOutput,
   RecommendationSchema,
   RecoveryOutcomeSchema,
+  IncidentClassSchema,
 } from "../src/domain/schemas";
+import { classifyIncident } from "../src/incident_commander/validation";
 const fixture = path.resolve("fixtures/timeout_after_mutation.json"),
   secret = "test-prototype-secret";
 const raw = () => JSON.parse(fs.readFileSync(fixture, "utf8"));
 describe("payment incident workflow", () => {
   it("verified evidence suppresses duplicate webhook and reconstructs timeout", () => {
     const r = reconstruct(verifyBundle(raw(), secret));
+    expect(r.incident_class).toBe("capture_timeout");
     expect(r.duplicate_evidence_ids).toEqual(["EV-WEBHOOK-002"]);
     expect(r.observation_transitions.map((x: any) => x.state)).toEqual([
       "requested",
       "ambiguous_after_timeout",
       "captured_verified",
     ]);
+  });
+  it("classifies all bounded incident classes deterministically", () => {
+    const classes = [
+      "paid_pending",
+      "paid_missing",
+      "one_payment_two_orders",
+      "callback_missing_webhook_recovers",
+      "webhook_delivery_failure",
+      "late_authorized",
+      "capture_timeout",
+      "settlement_exception",
+    ] as const;
+    expect(classes.map((value) => IncidentClassSchema.parse(value))).toEqual(
+      classes,
+    );
+    const payload = {
+      event_id: "evt_class_001",
+      event_type: "payment.captured",
+      payment_id: "pay_class_001",
+      payment_state: "captured",
+      amount_minor: 1000,
+      currency: "INR",
+      idempotency_key: "class-order-001",
+      signature_verified: true,
+      operation: "capture",
+    } as const;
+    const signed = {
+      evidence_id: "EV-CLASS-WEBHOOK",
+      kind: "processor_webhook" as const,
+      occurred_at: "2026-08-21T10:00:01.000Z",
+      received_at: "2026-08-21T10:00:02.000Z",
+      source: "processor-webhook" as const,
+      processor_signature: processorSignature(payload, secret),
+      payload,
+    };
+    const base = {
+      incident_id: "inc_class_001",
+      payment_id: payload.payment_id,
+      idempotency_key: payload.idempotency_key,
+    };
+    const order = (orderId: string, state: "pending" | "paid" | "missing") => ({
+      evidence_id: `EV-ORDER-${orderId}`,
+      kind: "merchant_order_state" as const,
+      occurred_at: "2026-08-21T10:00:03.000Z",
+      received_at: "2026-08-21T10:00:03.000Z",
+      source: "merchant-order-store" as const,
+      payload: {
+        payment_id: payload.payment_id,
+        order_id: orderId,
+        order_state: state,
+        amount_minor: payload.amount_minor,
+        currency: payload.currency,
+        operation: "capture" as const,
+        idempotency_key: payload.idempotency_key,
+      },
+    });
+    const classify = (evidence: unknown[]) =>
+      classifyIncident({ ...base, evidence } as any);
+    expect(classify([signed, order("order_pending_001", "pending")])).toBe(
+      "paid_pending",
+    );
+    expect(classify([signed])).toBe("paid_missing");
+    expect(
+      classify([
+        signed,
+        order("order_one_001", "missing"),
+        order("order_two_001", "missing"),
+      ]),
+    ).toBe("one_payment_two_orders");
+    expect(
+      classify([
+        signed,
+        {
+          evidence_id: "EV-CALLBACK",
+          kind: "callback_observation",
+          occurred_at: "2026-08-21T10:00:03.000Z",
+          received_at: "2026-08-21T10:00:03.000Z",
+          source: "merchant-payment-service",
+          payload: {
+            payment_id: payload.payment_id,
+            callback_status: "missing",
+            operation: "capture",
+            idempotency_key: payload.idempotency_key,
+          },
+        },
+      ]),
+    ).toBe("callback_missing_webhook_recovers");
+    expect(
+      classify([
+        signed,
+        {
+          evidence_id: "EV-DELIVERY",
+          kind: "webhook_delivery",
+          occurred_at: "2026-08-21T10:00:03.000Z",
+          received_at: "2026-08-21T10:00:03.000Z",
+          source: "controller-log",
+          payload: {
+            payment_id: payload.payment_id,
+            delivery_status: "timeout",
+            operation: "capture",
+            idempotency_key: payload.idempotency_key,
+          },
+        },
+      ]),
+    ).toBe("webhook_delivery_failure");
+    const latePayload = {
+      ...payload,
+      event_id: "evt_class_auth",
+      event_type: "payment.authorized" as const,
+      payment_state: "authorized" as const,
+      operation: "authorize" as const,
+    };
+    expect(
+      classify([
+        {
+          ...signed,
+          payload: latePayload,
+          processor_signature: processorSignature(latePayload, secret),
+        },
+      ]),
+    ).toBe("late_authorized");
+    expect(
+      classify([
+        signed,
+        order("order_settlement_001", "paid"),
+        {
+          evidence_id: "EV-SETTLEMENT",
+          kind: "settlement_observation",
+          occurred_at: "2026-08-21T10:00:03.000Z",
+          received_at: "2026-08-21T10:00:03.000Z",
+          source: "processor-api",
+          payload: {
+            payment_id: payload.payment_id,
+            settlement_status: "missing",
+            amount_minor: payload.amount_minor,
+            currency: payload.currency,
+            operation: "read",
+            idempotency_key: payload.idempotency_key,
+          },
+        },
+      ]),
+    ).toBe("settlement_exception");
   });
   it("unsafe and unknown actions fail closed", () => {
     const b = verifyBundle(raw(), secret),
