@@ -1,6 +1,7 @@
 import { desc, eq, isNull, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import {
+  afterstateObservations,
   auditEvents,
   incidentProgress,
   incidents,
@@ -14,10 +15,12 @@ import {
 import { createDatabase, type Database } from "./client";
 import {
   ActionSchema,
+  AfterstateObservationSchema,
   IncidentBundleSchema,
   PaymentStateSchema,
   RecoveryOutcomeSchema,
   type PaymentState,
+  type AfterstateObservation,
   type IncidentBundle,
 } from "../domain/schemas";
 import type {
@@ -79,7 +82,7 @@ export class PostgresIncidentRepository implements IncidentRepository {
     await migrate(this.db, { migrationsFolder });
     if (reset) {
       await this.db.execute(
-        sql`TRUNCATE TABLE ${auditEvents}, ${recoveries}, ${incidents}, ${payments}, ${razorpayWebhookEvents}, ${incidentProgress}, ${merchantOrderUpdates}, ${merchantOrders} RESTART IDENTITY`,
+        sql`TRUNCATE TABLE ${auditEvents}, ${afterstateObservations}, ${recoveryAttempts}, ${recoveries}, ${incidents}, ${payments}, ${razorpayWebhookEvents}, ${incidentProgress}, ${merchantOrderUpdates}, ${merchantOrders} RESTART IDENTITY`,
       );
     }
   }
@@ -273,6 +276,37 @@ export class PostgresIncidentRepository implements IncidentRepository {
           completedAt: new Date(value.completed_at),
         },
       });
+  }
+  async saveAfterstateObservation(
+    executionKey: string,
+    observation: AfterstateObservation,
+  ) {
+    const parsed = AfterstateObservationSchema.parse(observation);
+    return this.db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(afterstateObservations)
+        .values({ executionKey, observation: parsed })
+        .onConflictDoNothing()
+        .returning({ executionKey: afterstateObservations.executionKey });
+      const [row] = await tx
+        .select()
+        .from(afterstateObservations)
+        .where(eq(afterstateObservations.executionKey, executionKey));
+      if (!row) throw new Error("afterstate observation was not stored");
+      const existing = AfterstateObservationSchema.parse(row.observation);
+      if (JSON.stringify(existing) !== JSON.stringify(parsed))
+        throw new Error(
+          "execution key was already stored with a different afterstate observation",
+        );
+      return inserted.length === 1;
+    });
+  }
+  async afterstateObservation(executionKey: string) {
+    const [row] = await this.db
+      .select()
+      .from(afterstateObservations)
+      .where(eq(afterstateObservations.executionKey, executionKey));
+    return row ? AfterstateObservationSchema.parse(row.observation) : undefined;
   }
   async audit(type: string, payload: unknown) {
     const [row] = await this.db

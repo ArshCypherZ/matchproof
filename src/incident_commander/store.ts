@@ -64,6 +64,16 @@ export class IncidentStore {
   ) {
     return this.repository.completeRecovery(...args);
   }
+  saveAfterstateObservation(
+    ...args: Parameters<IncidentRepository["saveAfterstateObservation"]>
+  ) {
+    return this.repository.saveAfterstateObservation(...args);
+  }
+  afterstateObservation(
+    ...args: Parameters<IncidentRepository["afterstateObservation"]>
+  ) {
+    return this.repository.afterstateObservation(...args);
+  }
   updatePayment(...args: Parameters<IncidentRepository["updatePayment"]>) {
     return this.repository.updatePayment(...args);
   }

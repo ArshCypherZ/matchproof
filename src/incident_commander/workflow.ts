@@ -16,6 +16,12 @@ import type { EvidenceGatherer } from "./evidence-gatherer";
 import type { PolicyAuditLogger } from "./policy";
 import { RecoveryExecutor } from "./recovery-executor";
 import type { MerchantPlatformAdapter } from "../db/merchant-platform-adapter";
+import {
+  AfterstateVerifier,
+  RazorpayProviderAfterstateAdapter,
+  type AfterstateVerificationResult,
+  type ProviderAfterstateAdapter,
+} from "./afterstate-verifier";
 export async function runIncident(
   fixture: string,
   state: string,
@@ -26,6 +32,7 @@ export async function runIncident(
     diagnosisMode?: string;
     evidenceGatherer?: EvidenceGatherer;
     merchantPlatformAdapter?: MerchantPlatformAdapter;
+    providerAfterstateAdapter?: ProviderAfterstateAdapter;
     tenantId?: string;
   } = {},
 ) {
@@ -118,6 +125,7 @@ export async function runIncident(
   }
   const key = `${recommendation.action}:${saved.incident_id}:${saved.payment_id}:${saved.idempotency_key}`;
   let outcome;
+  let afterstateVerification: AfterstateVerificationResult | undefined;
   const existing = await store.recovery(key);
   const payment = await store.payment(saved.payment_id);
   if (!payment)
@@ -153,6 +161,18 @@ export async function runIncident(
     });
     await markCompleted("execute", { action: recommendation.action });
     await store.audit("recovery_completed", outcome);
+    afterstateVerification = await new AfterstateVerifier(
+      store,
+      opts.providerAfterstateAdapter ?? new RazorpayProviderAfterstateAdapter(),
+      opts.merchantPlatformAdapter,
+    ).verify({
+      executionKey: outcome.idempotency_key,
+      paymentId: saved.payment_id,
+      orderId,
+      amountMinor: payment.amount_minor,
+      currency: payment.currency,
+    });
+    await store.audit("afterstate_observed", afterstateVerification);
   } else {
     const after =
       recommendation.action === "reconcile_internal_state"
@@ -203,8 +223,49 @@ export async function runIncident(
   const paymentAfter = await store.payment(saved.payment_id);
   if (!paymentAfter)
     throw new Error(`payment ${saved.payment_id} disappeared after recovery`);
-  await markCompleted("verify", { payment_state: paymentAfter.state });
-  const terminalStep = outcome.status === "reconciled" ? "close" : "escalate";
+  const verificationDetails = {
+    payment_state: paymentAfter.state,
+    afterstate_status: afterstateVerification?.status ?? "not_required",
+  };
+  if (
+    afterstateVerification &&
+    afterstateVerification.status !== "verified" &&
+    !completedSteps.has("verify")
+  )
+    await store.setProgress(
+      saved.incident_id,
+      "verify",
+      afterstateVerification.status,
+      verificationDetails,
+    );
+  else await markCompleted("verify", verificationDetails);
+  if (
+    (outcome.status === "reconciled" ||
+      outcome.status === "already_completed") &&
+    afterstateVerification &&
+    afterstateVerification.status !== "verified"
+  )
+    outcome = RecoveryOutcomeSchema.parse({
+      status: "escalated",
+      action: recommendation.action,
+      idempotency_key: outcome.idempotency_key,
+      before_state: outcome.before_state,
+      after_state: outcome.after_state,
+      reason:
+        afterstateVerification.status === "held"
+          ? "fresh afterstate could not be obtained"
+          : "fresh afterstate did not satisfy the recovery invariant",
+      escalation_reason: afterstateVerification.reasons.join("; "),
+      terminal_owner: "payment-operations",
+      policy_version: "deterministic-policy-v1",
+      credential_scope: "merchant-state-reconciliation",
+    });
+  const terminalStep =
+    outcome.status === "reconciled" ||
+    (outcome.status === "already_completed" &&
+      afterstateVerification?.status === "verified")
+      ? "close"
+      : "escalate";
   await markCompleted(terminalStep, { outcome: outcome.status });
   const auditRecords = await store.auditRecords();
   await store.close();
@@ -218,6 +279,7 @@ export async function runIncident(
     resumed_from: resumeFrom,
     gate_decisions: gateDecisions,
     outcome,
+    afterstate_verification: afterstateVerification,
     payment_state: {
       ...paymentAfter,
       state: outcome.after_state,

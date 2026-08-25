@@ -64,6 +64,13 @@
       "when": 1787648243427,
       "tag": "0008_windy_mercury",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787649374318,
+      "tag": "0009_spotty_zzzax",
+      "breakpoints": true
     }
   ]
 }

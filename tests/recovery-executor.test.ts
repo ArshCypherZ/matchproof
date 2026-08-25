@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MerchantPlatformAdapter } from "../src/db/merchant-platform-adapter";
 import type {
-  IncidentRepository,
   RecoveryAttempt,
   RecoveryInput,
   RecoveryRecord,

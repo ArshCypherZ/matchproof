@@ -2,6 +2,7 @@ import { desc, eq, isNull, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { createSqliteDatabase, type SqliteDatabase } from "./sqlite-client";
 import {
+  afterstateObservations,
   auditEvents,
   incidentProgress,
   incidents,
@@ -12,9 +13,11 @@ import {
 } from "./sqlite-schema";
 import {
   ActionSchema,
+  AfterstateObservationSchema,
   IncidentBundleSchema,
   PaymentStateSchema,
   type PaymentState,
+  type AfterstateObservation,
   RecoveryOutcomeSchema,
   type IncidentBundle,
 } from "../domain/schemas";
@@ -72,17 +75,10 @@ export class SqliteIncidentRepository implements IncidentRepository {
     this.db = this.connection.db;
   }
   async initialize(reset: boolean) {
-    const hasTables = this.connection.client
-      .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'payments'",
-      )
-      .get();
-    if (!hasTables) {
-      migrate(this.db, { migrationsFolder: "drizzle-sqlite" });
-    }
+    migrate(this.db, { migrationsFolder: "drizzle-sqlite" });
     if (reset)
       this.connection.client.exec(
-        "DELETE FROM audit_events; DELETE FROM recovery_attempts; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress; DELETE FROM merchant_order_updates; DELETE FROM merchant_orders;",
+        "DELETE FROM audit_events; DELETE FROM afterstate_observations; DELETE FROM recovery_attempts; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress; DELETE FROM merchant_order_updates; DELETE FROM merchant_orders;",
       );
   }
   async close() {
@@ -280,6 +276,43 @@ export class SqliteIncidentRepository implements IncidentRepository {
         },
       })
       .run();
+  }
+  async saveAfterstateObservation(
+    executionKey: string,
+    observation: AfterstateObservation,
+  ) {
+    const parsed = AfterstateObservationSchema.parse(observation);
+    return this.connection.client.transaction(() => {
+      const inserted = this.db
+        .insert(afterstateObservations)
+        .values({ executionKey, observation: JSON.stringify(parsed) })
+        .onConflictDoNothing()
+        .run();
+      const [row] = this.db
+        .select()
+        .from(afterstateObservations)
+        .where(eq(afterstateObservations.executionKey, executionKey))
+        .all();
+      if (!row) throw new Error("afterstate observation was not stored");
+      const existing = AfterstateObservationSchema.parse(
+        JSON.parse(row.observation),
+      );
+      if (JSON.stringify(existing) !== JSON.stringify(parsed))
+        throw new Error(
+          "execution key was already stored with a different afterstate observation",
+        );
+      return inserted.changes === 1;
+    })();
+  }
+  async afterstateObservation(executionKey: string) {
+    const [row] = this.db
+      .select()
+      .from(afterstateObservations)
+      .where(eq(afterstateObservations.executionKey, executionKey))
+      .all();
+    return row
+      ? AfterstateObservationSchema.parse(JSON.parse(row.observation))
+      : undefined;
   }
   async audit(type: string, payload: unknown) {
     const [row] = this.db

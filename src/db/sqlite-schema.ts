@@ -98,6 +98,10 @@ export const recoveryAttempts = sqliteTable("recovery_attempts", {
   startedAt: text("started_at").notNull(),
   completedAt: text("completed_at"),
 });
+export const afterstateObservations = sqliteTable("afterstate_observations", {
+  executionKey: text("execution_key").primaryKey(),
+  observation: text("observation").notNull(),
+});
 export const auditEvents = sqliteTable("audit_events", {
   sequence: integer("sequence").primaryKey({ autoIncrement: true }),
   recordedAt: text("recorded_at").notNull(),
@@ -149,6 +153,7 @@ export const schema = {
   incidents,
   recoveries,
   recoveryAttempts,
+  afterstateObservations,
   auditEvents,
   razorpayWebhookEvents,
   incidentProgress,
