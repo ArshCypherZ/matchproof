@@ -1,4 +1,6 @@
 import { desc, eq, isNull, sql } from "drizzle-orm";
+import path from "node:path";
+import { existsSync } from "node:fs";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import {
   afterstateObservations,
@@ -39,7 +41,11 @@ import type {
 } from "./repository";
 import { derivePaymentSeed } from "./repository";
 
-const migrationsFolder = "drizzle";
+const migrationsFolder = existsSync(
+  path.resolve(process.cwd(), "drizzle/meta/_journal.json"),
+)
+  ? path.resolve(process.cwd(), "drizzle")
+  : path.resolve(process.cwd(), "../../drizzle");
 const asPayment = (row: typeof payments.$inferSelect): PaymentRecord => ({
   payment_id: row.paymentId,
   state: PaymentStateSchema.parse(row.state),

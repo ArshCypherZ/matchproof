@@ -1,4 +1,5 @@
 import { requestContext, withStore, incidentDto } from "../../../lib/incidents";
+import { syntheticEvaluationMetrics } from "../../../lib/metrics";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const { tenantId } = requestContext(request);
@@ -29,6 +30,8 @@ export async function GET(request: Request) {
       else counts.automatic += 1;
     }
     return {
+      evaluation: syntheticEvaluationMetrics,
+      operational_source: "Current tenant incident store",
       total: items.length,
       ...counts,
       accuracy: null,

@@ -25,7 +25,7 @@ export type RazorpayClient = {
   };
   payments: {
     fetch(paymentId: string): Promise<unknown>;
-    all(input?: Record<string, unknown>): Promise<{ items: unknown[] }>;
+    all(input?: Record<string, unknown>): Promise<unknown>;
   };
 };
 
@@ -81,12 +81,34 @@ export async function verifyTestModeConnection(
   env: NodeJS.ProcessEnv = process.env,
 ) {
   const client = createTestModeClient(env) as unknown as RazorpayClient;
-  const result = await client.payments.all({ count: 1 });
+  const result = await listTestModePayments(1, client);
 
   return {
     mode: "test" as const,
     connected: true as const,
     paymentRecordsObserved: result.items.length,
+  };
+}
+
+/** List recent authoritative Test-mode payment records. */
+export async function listTestModePayments(
+  count = 10,
+  client?: RazorpayClient,
+) {
+  if (!Number.isSafeInteger(count) || count < 1 || count > 100)
+    throw new RazorpayInputError("count must be an integer from 1 to 100");
+  const result = await clientOrDefault(client).payments.all({ count });
+  const collection = result as { count?: unknown; items?: unknown };
+  if (!Array.isArray(collection.items))
+    throw new RazorpayInputError("Razorpay payment collection is invalid");
+  return {
+    count:
+      typeof collection.count === "number"
+        ? collection.count
+        : collection.items.length,
+    items: collection.items.map((item) =>
+      RazorpayPaymentResponseSchema.parse(item),
+    ),
   };
 }
 

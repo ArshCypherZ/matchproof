@@ -8,6 +8,9 @@ const querySchema = z.object({
     .enum(["pending", "reconciled", "escalated", "ambiguous"])
     .optional(),
   class: z.string().min(1).optional(),
+  q: z.string().trim().min(1).optional(),
+  sort: z.enum(["age", "amount", "updated", "status", "class"]).default("age"),
+  direction: z.enum(["asc", "desc"]).default("desc"),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   page: z.coerce.number().int().min(1).default(1),
@@ -39,6 +42,11 @@ export async function GET(request: Request) {
       (item) =>
         (!parsed.data.status || item.status === parsed.data.status) &&
         (!parsed.data.class || item.incident_class === parsed.data.class) &&
+        (!parsed.data.q ||
+          [item.incident_id, item.payment_id, item.order_id ?? ""].some(
+            (value) =>
+              value.toLowerCase().includes(parsed.data.q!.toLowerCase()),
+          )) &&
         (!parsed.data.from ||
           item.evidence.some(
             (entry) => entry.received_at >= parsed.data.from!,
@@ -46,6 +54,27 @@ export async function GET(request: Request) {
         (!parsed.data.to ||
           item.evidence.some((entry) => entry.received_at <= parsed.data.to!)),
     );
+    const direction = parsed.data.direction === "asc" ? 1 : -1;
+    filtered.sort((left, right) => {
+      if (parsed.data.sort === "amount")
+        return (
+          ((left.payment?.amount_minor ?? 0) -
+            (right.payment?.amount_minor ?? 0)) *
+          direction
+        );
+      if (parsed.data.sort === "updated")
+        return (
+          (Date.parse(left.updated_at) - Date.parse(right.updated_at)) *
+          direction
+        );
+      if (parsed.data.sort === "status")
+        return left.status.localeCompare(right.status) * direction;
+      if (parsed.data.sort === "class")
+        return (
+          left.incident_class.localeCompare(right.incident_class) * direction
+        );
+      return (right.age_seconds - left.age_seconds) * direction;
+    });
     const start = (parsed.data.page - 1) * parsed.data.page_size;
     const summary = { pending: 0, reconciled: 0, escalated: 0, ambiguous: 0 };
     for (const item of filtered) {
