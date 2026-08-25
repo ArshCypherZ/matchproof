@@ -6,4 +6,5 @@ export * from "./reconciliation";
 export * from "./policy";
 export * from "./diagnosis";
 export * from "./store";
+export * from "./recovery-executor";
 export * from "./evidence-gatherer";

@@ -57,6 +57,13 @@
       "when": 1787638607561,
       "tag": "0007_gorgeous_praxagora",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787648243427,
+      "tag": "0008_windy_mercury",
+      "breakpoints": true
     }
   ]
 }

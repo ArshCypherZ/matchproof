@@ -14,6 +14,8 @@ import {
 } from "./core";
 import type { EvidenceGatherer } from "./evidence-gatherer";
 import type { PolicyAuditLogger } from "./policy";
+import { RecoveryExecutor } from "./recovery-executor";
+import type { MerchantPlatformAdapter } from "../db/merchant-platform-adapter";
 export async function runIncident(
   fixture: string,
   state: string,
@@ -23,6 +25,8 @@ export async function runIncident(
     diagnosisAdapter?: FixtureDiagnosisAdapter;
     diagnosisMode?: string;
     evidenceGatherer?: EvidenceGatherer;
+    merchantPlatformAdapter?: MerchantPlatformAdapter;
+    tenantId?: string;
   } = {},
 ) {
   const raw: unknown = JSON.parse(fs.readFileSync(fixture, "utf8"));
@@ -127,7 +131,29 @@ export async function runIncident(
       after_state: existing.after_state,
       reason: "recovery already completed and durable state agrees",
     });
-  else {
+  else if (
+    opts.merchantPlatformAdapter &&
+    recommendation.action === "reconcile_internal_state"
+  ) {
+    const orderId = initialBundle.evidence.find(
+      (entry) => entry.kind === "merchant_order_state",
+    )?.payload.order_id;
+    if (!orderId)
+      throw new Error(
+        "merchant order evidence is required for adapter recovery",
+      );
+    const executor = new RecoveryExecutor(store, opts.merchantPlatformAdapter);
+    outcome = await executor.execute(dec, {
+      tenantId: opts.tenantId ?? "default",
+      incidentId: saved.incident_id,
+      paymentId: saved.payment_id,
+      orderId,
+      beforeState: payment.state,
+      targetState: "paid",
+    });
+    await markCompleted("execute", { action: recommendation.action });
+    await store.audit("recovery_completed", outcome);
+  } else {
     const after =
       recommendation.action === "reconcile_internal_state"
         ? VerifiedPaymentStateSchema.parse(recon.current_state)

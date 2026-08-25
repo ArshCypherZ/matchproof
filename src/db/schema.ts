@@ -99,6 +99,16 @@ export const recoveries = pgTable("recoveries", {
   afterState: text("after_state").notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
 });
+export const recoveryAttempts = pgTable("recovery_attempts", {
+  executionKey: text("execution_key").primaryKey(),
+  action: text("action").notNull(),
+  status: text("status").notNull(),
+  beforeState: text("before_state").notNull(),
+  afterState: text("after_state"),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+});
 export const auditEvents = pgTable("audit_events", {
   sequence: integer("sequence").generatedAlwaysAsIdentity().primaryKey(),
   recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
@@ -157,6 +167,7 @@ export const schema = {
   merchantOrderUpdates,
   incidents,
   recoveries,
+  recoveryAttempts,
   auditEvents,
   razorpayWebhookEvents,
   incidentProgress,

@@ -46,6 +46,19 @@ export class IncidentStore {
   recovery(key: string) {
     return this.repository.recovery(key);
   }
+  recoveryAttempt(key: string) {
+    return this.repository.recoveryAttempt(key);
+  }
+  startRecoveryAttempt(
+    ...args: Parameters<IncidentRepository["startRecoveryAttempt"]>
+  ) {
+    return this.repository.startRecoveryAttempt(...args);
+  }
+  completeRecoveryAttempt(
+    ...args: Parameters<IncidentRepository["completeRecoveryAttempt"]>
+  ) {
+    return this.repository.completeRecoveryAttempt(...args);
+  }
   completeRecovery(
     ...args: Parameters<IncidentRepository["completeRecovery"]>
   ) {

@@ -140,6 +140,17 @@ export type IncidentBundleValidator = (input: unknown) => IncidentBundle;
 
 export type RecoveryInput = Omit<RecoveryRecord, "execution_key">;
 
+export type RecoveryAttempt = {
+  execution_key: string;
+  action: Action;
+  status: "started" | "succeeded" | "failed";
+  before_state: PaymentState;
+  after_state?: PaymentState;
+  error?: string;
+  started_at: string;
+  completed_at?: string;
+};
+
 export interface IncidentRepository {
   initialize(reset: boolean): Promise<void>;
   close(): Promise<void>;
@@ -149,6 +160,15 @@ export interface IncidentRepository {
   payment(id: string): Promise<PaymentRecord | undefined>;
   updatePayment(id: string, state: string): Promise<void>;
   recovery(key: string): Promise<RecoveryRecord | undefined>;
+  recoveryAttempt(key: string): Promise<RecoveryAttempt | undefined>;
+  startRecoveryAttempt(input: RecoveryAttempt): Promise<boolean>;
+  completeRecoveryAttempt(
+    key: string,
+    input: Pick<
+      RecoveryAttempt,
+      "status" | "after_state" | "error" | "completed_at"
+    >,
+  ): Promise<void>;
   completeRecovery(key: string, value: RecoveryInput): Promise<void>;
   audit(type: string, payload: unknown): Promise<number | undefined>;
   auditRecords(): Promise<unknown[]>;

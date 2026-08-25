@@ -6,6 +6,7 @@ import {
   incidentProgress,
   incidents,
   payments,
+  recoveryAttempts,
   recoveries,
   razorpayWebhookEvents,
 } from "./sqlite-schema";
@@ -22,6 +23,7 @@ import type {
   PaymentRecord,
   ProgressRecord,
   RecoveryInput,
+  RecoveryAttempt,
   WebhookInput,
   WebhookRecord,
   WebhookProcessingInput,
@@ -80,7 +82,7 @@ export class SqliteIncidentRepository implements IncidentRepository {
     }
     if (reset)
       this.connection.client.exec(
-        "DELETE FROM audit_events; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress; DELETE FROM merchant_order_updates; DELETE FROM merchant_orders;",
+        "DELETE FROM audit_events; DELETE FROM recovery_attempts; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress; DELETE FROM merchant_order_updates; DELETE FROM merchant_orders;",
       );
   }
   async close() {
@@ -201,6 +203,62 @@ export class SqliteIncidentRepository implements IncidentRepository {
           completed_at: row.completedAt,
         }
       : undefined;
+  }
+  async recoveryAttempt(key: string) {
+    const [row] = this.db
+      .select()
+      .from(recoveryAttempts)
+      .where(eq(recoveryAttempts.executionKey, key))
+      .all();
+    return row
+      ? {
+          execution_key: row.executionKey,
+          action: ActionSchema.parse(row.action),
+          status: row.status as RecoveryAttempt["status"],
+          before_state: PaymentStateSchema.parse(row.beforeState),
+          ...(row.afterState
+            ? { after_state: PaymentStateSchema.parse(row.afterState) }
+            : {}),
+          ...(row.error ? { error: row.error } : {}),
+          started_at: row.startedAt,
+          ...(row.completedAt ? { completed_at: row.completedAt } : {}),
+        }
+      : undefined;
+  }
+  async startRecoveryAttempt(input: RecoveryAttempt) {
+    const result = this.db
+      .insert(recoveryAttempts)
+      .values({
+        executionKey: input.execution_key,
+        action: input.action,
+        status: input.status,
+        beforeState: input.before_state,
+        afterState: input.after_state,
+        error: input.error,
+        startedAt: input.started_at,
+        completedAt: input.completed_at,
+      })
+      .onConflictDoNothing()
+      .run();
+    return result.changes === 1;
+  }
+  async completeRecoveryAttempt(
+    key: string,
+    input: Pick<
+      RecoveryAttempt,
+      "status" | "after_state" | "error" | "completed_at"
+    >,
+  ) {
+    this.db
+      .update(recoveryAttempts)
+      .set({
+        status: input.status,
+        afterState: input.after_state,
+        error: input.error,
+        completedAt: input.completed_at,
+      })
+      .where(eq(recoveryAttempts.executionKey, key))
+      .run();
   }
   async completeRecovery(key: string, value: RecoveryInput) {
     this.db

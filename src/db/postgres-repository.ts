@@ -7,6 +7,7 @@ import {
   merchantOrders,
   merchantOrderUpdates,
   payments,
+  recoveryAttempts,
   recoveries,
   razorpayWebhookEvents,
 } from "./schema";
@@ -24,6 +25,7 @@ import type {
   PaymentRecord,
   ProgressRecord,
   RecoveryInput,
+  RecoveryAttempt,
   WebhookInput,
   WebhookRecord,
   WebhookProcessingInput,
@@ -191,6 +193,66 @@ export class PostgresIncidentRepository implements IncidentRepository {
           completed_at: row.completedAt.toISOString(),
         }
       : undefined;
+  }
+  async recoveryAttempt(key: string) {
+    const [row] = await this.db
+      .select()
+      .from(recoveryAttempts)
+      .where(eq(recoveryAttempts.executionKey, key));
+    return row
+      ? {
+          execution_key: row.executionKey,
+          action: ActionSchema.parse(row.action),
+          status: row.status as RecoveryAttempt["status"],
+          before_state: PaymentStateSchema.parse(row.beforeState),
+          ...(row.afterState
+            ? { after_state: PaymentStateSchema.parse(row.afterState) }
+            : {}),
+          ...(row.error ? { error: row.error } : {}),
+          started_at: row.startedAt.toISOString(),
+          ...(row.completedAt
+            ? { completed_at: row.completedAt.toISOString() }
+            : {}),
+        }
+      : undefined;
+  }
+  async startRecoveryAttempt(input: RecoveryAttempt) {
+    const rows = await this.db
+      .insert(recoveryAttempts)
+      .values({
+        executionKey: input.execution_key,
+        action: input.action,
+        status: input.status,
+        beforeState: input.before_state,
+        afterState: input.after_state,
+        error: input.error,
+        startedAt: new Date(input.started_at),
+        completedAt: input.completed_at
+          ? new Date(input.completed_at)
+          : undefined,
+      })
+      .onConflictDoNothing()
+      .returning({ executionKey: recoveryAttempts.executionKey });
+    return rows.length === 1;
+  }
+  async completeRecoveryAttempt(
+    key: string,
+    input: Pick<
+      RecoveryAttempt,
+      "status" | "after_state" | "error" | "completed_at"
+    >,
+  ) {
+    await this.db
+      .update(recoveryAttempts)
+      .set({
+        status: input.status,
+        afterState: input.after_state,
+        error: input.error,
+        completedAt: input.completed_at
+          ? new Date(input.completed_at)
+          : undefined,
+      })
+      .where(eq(recoveryAttempts.executionKey, key));
   }
   async completeRecovery(key: string, value: RecoveryInput) {
     await this.db
