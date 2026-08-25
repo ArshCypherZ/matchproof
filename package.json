@@ -17,6 +17,7 @@
     "razorpay:verify": "tsx src/incident_commander/verify-razorpay.ts",
     "razorpay:webhook-server": "tsx src/incident_commander/webhook-server.ts",
     "demo": "tsx src/incident_commander/demo.ts",
+    "evaluate:baseline": "tsx src/evaluation/deterministic-baseline.ts",
     "db:generate": "drizzle-kit generate",
     "db:generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",
     "db:migrate": "drizzle-kit migrate",
