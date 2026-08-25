@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { EvidenceGatherer, IncidentStore } from "./core";
 import { createRazorpayWebhookServer, RazorpayWebhookInbox } from "./webhook";
+import { addWebhookIncidentJob, createQueues } from "../queue";
 
 function loadLocalEnv() {
   const envPath = path.resolve(".env");
@@ -28,9 +29,18 @@ await store.initialize();
 const inbox = new RazorpayWebhookInbox(store, {
   evidenceGatherer: new EvidenceGatherer(),
 });
+const queues = process.env.REDIS_URL ? createQueues() : undefined;
 const server = createRazorpayWebhookServer(inbox, {
   webhookSecret: secret,
   processorSecret,
+  ...(queues
+    ? {
+        dispatcher: {
+          enqueueIncident: (eventId: string) =>
+            addWebhookIncidentJob(queues, eventId),
+        },
+      }
+    : {}),
 });
 
 server.listen(port, "0.0.0.0", () => {
@@ -45,7 +55,7 @@ server.listen(port, "0.0.0.0", () => {
 });
 
 function shutdown() {
-  server.close(() => void store.close());
+  server.close(() => void Promise.all([store.close(), queues?.close()]));
 }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

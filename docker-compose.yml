@@ -1,4 +1,17 @@
 services:
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
   postgres:
     image: postgres:latest
     restart: unless-stopped
@@ -17,4 +30,5 @@ services:
       retries: 15
 
 volumes:
+  redis_data:
   postgres_data:

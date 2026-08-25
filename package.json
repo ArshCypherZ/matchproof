@@ -35,8 +35,10 @@
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
     "better-sqlite3": "^13.0.3",
+    "bullmq": "^6.2.0",
     "drizzle-orm": "^0.45.2",
     "groq-sdk": "^1.5.0",
+    "ioredis": "^6.0.0",
     "pg": "^8.23.0",
     "razorpay": "^2.9.8",
     "tsx": "^4.23.12",

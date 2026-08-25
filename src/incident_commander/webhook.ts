@@ -27,6 +27,10 @@ export type RazorpayWebhookIngestResult = {
   receivedAt: string;
 };
 
+export type IncidentJobDispatcher = {
+  enqueueIncident: (eventId: string) => Promise<unknown>;
+};
+
 export class RazorpayWebhookConflictError extends Error {}
 
 function assertEventId(eventId: string) {
@@ -259,6 +263,7 @@ export function createRazorpayWebhookServer(
     webhookSecret?: string;
     processorSecret?: string;
     maxBodyBytes?: number;
+    dispatcher?: IncidentJobDispatcher;
   } = {},
 ) {
   const maxBodyBytes = options.maxBodyBytes ?? 1_000_000;
@@ -304,6 +309,14 @@ export function createRazorpayWebhookServer(
         void inbox
           .ingest(input)
           .then(async (result) => {
+            if (options.dispatcher) {
+              await options.dispatcher.enqueueIncident(result.eventId);
+              response.writeHead(202, { "content-type": "application/json" });
+              response.end(
+                JSON.stringify({ ...result, pipeline: { status: "queued" } }),
+              );
+              return;
+            }
             let pipeline:
               | WebhookProcessingResult
               | { status: "stored_unmatched" | "pending"; reason?: string };

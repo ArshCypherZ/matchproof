@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { requestContext, withStore } from "../../../../lib/incidents";
+import {
+  addBatchJob,
+  addIncidentJob,
+  createQueues,
+} from "../../../../../../src/queue";
 export const dynamic = "force-dynamic";
 const schema = z
   .object({ incident_ids: z.array(z.string().min(1)).min(1).max(1000) })
@@ -35,6 +40,19 @@ export async function POST(request: Request) {
   });
   if (!incidentIds.length)
     return Response.json({ error: "no_accessible_incidents" }, { status: 404 });
+  if (process.env.REDIS_URL) {
+    const queues = createQueues();
+    try {
+      await addBatchJob(queues, batchId, incidentIds);
+      await Promise.all(
+        incidentIds.map((incidentId) =>
+          addIncidentJob(queues, incidentId, { batchId }),
+        ),
+      );
+    } finally {
+      await queues.close();
+    }
+  }
   return Response.json(
     {
       batch_id: batchId,
