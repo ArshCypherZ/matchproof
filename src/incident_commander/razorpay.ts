@@ -3,7 +3,7 @@ import {
   RazorpayOrderResponseSchema,
   RazorpayPaymentCollectionSchema,
   RazorpayPaymentResponseSchema,
-  RazorpayWebhookBodyEnvelopeSchema,
+  RazorpayWebhookBodyEnvelopeResponseSchema,
   type RazorpayOrder as ParsedRazorpayOrder,
   type RazorpayPayment as ParsedRazorpayPayment,
   type RazorpayPaymentCollection as ParsedRazorpayPaymentCollection,
@@ -222,5 +222,5 @@ export function parseVerifiedRazorpayWebhook(
     throw new RazorpayWebhookVerificationError(
       "Razorpay webhook event has an invalid shape",
     );
-  return RazorpayWebhookBodyEnvelopeSchema.parse(event);
+  return RazorpayWebhookBodyEnvelopeResponseSchema.parse(event);
 }
