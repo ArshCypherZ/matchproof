@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { IncidentStore } from "./core";
+import { EvidenceGatherer, IncidentStore } from "./core";
 import { createRazorpayWebhookServer, RazorpayWebhookInbox } from "./webhook";
 
 function loadLocalEnv() {
@@ -16,14 +16,22 @@ function loadLocalEnv() {
 loadLocalEnv();
 const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 if (!secret) throw new Error("RAZORPAY_WEBHOOK_SECRET must be configured");
+const processorSecret = process.env.PROCESSOR_WEBHOOK_SECRET;
+if (!processorSecret)
+  throw new Error("PROCESSOR_WEBHOOK_SECRET must be configured");
 
 const port = Number(process.env.PORT ?? "9999");
 
 const statePath = "postgresql";
-const store = new IncidentStore(statePath, false, secret);
+const store = new IncidentStore(statePath, false, processorSecret);
 await store.initialize();
-const inbox = new RazorpayWebhookInbox(store);
-const server = createRazorpayWebhookServer(inbox, { webhookSecret: secret });
+const inbox = new RazorpayWebhookInbox(store, {
+  evidenceGatherer: new EvidenceGatherer(),
+});
+const server = createRazorpayWebhookServer(inbox, {
+  webhookSecret: secret,
+  processorSecret,
+});
 
 server.listen(port, "0.0.0.0", () => {
   console.log(

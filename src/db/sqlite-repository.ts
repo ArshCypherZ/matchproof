@@ -24,6 +24,9 @@ import type {
   RecoveryInput,
   WebhookInput,
   WebhookRecord,
+  WebhookProcessingInput,
+  WebhookProcessingResult,
+  IncidentBundleValidator,
 } from "./repository";
 import { derivePaymentSeed } from "./repository";
 
@@ -77,7 +80,7 @@ export class SqliteIncidentRepository implements IncidentRepository {
     }
     if (reset)
       this.connection.client.exec(
-        "DELETE FROM audit_events; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress;",
+        "DELETE FROM audit_events; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress; DELETE FROM merchant_order_updates; DELETE FROM merchant_orders;",
       );
   }
   async close() {
@@ -153,6 +156,19 @@ export class SqliteIncidentRepository implements IncidentRepository {
       .where(eq(incidents.incidentId, id))
       .all();
     return row ? IncidentBundleSchema.parse(JSON.parse(row.bundle)) : null;
+  }
+  async incidentByPaymentId(paymentId: string) {
+    const rows = this.db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.paymentId, paymentId))
+      .limit(2)
+      .all();
+    if (rows.length > 1)
+      throw new Error("payment is correlated to multiple incidents");
+    return rows[0]
+      ? IncidentBundleSchema.parse(JSON.parse(rows[0].bundle))
+      : null;
   }
   async payment(id: string) {
     const [row] = this.db
@@ -304,6 +320,172 @@ export class SqliteIncidentRepository implements IncidentRepository {
         eventId: row.eventId,
         eventType: row.eventType,
         receivedAt: row.receivedAt,
+      };
+    })();
+  }
+  async processWebhookEvidence(
+    input: WebhookProcessingInput,
+    validateBundle: IncidentBundleValidator,
+  ): Promise<WebhookProcessingResult> {
+    return this.connection.client.transaction(() => {
+      const [webhook] = this.db
+        .select()
+        .from(razorpayWebhookEvents)
+        .where(eq(razorpayWebhookEvents.eventId, input.eventId))
+        .all();
+      if (!webhook) throw new Error("webhook event must be ingested first");
+      if (webhook.paymentId !== input.paymentId)
+        throw new Error("webhook payment identity conflicts with evidence");
+      const rows = this.db
+        .select()
+        .from(incidents)
+        .where(eq(incidents.paymentId, input.paymentId))
+        .limit(2)
+        .all();
+      if (rows.length > 1)
+        throw new Error("payment is correlated to multiple incidents");
+      const now = new Date().toISOString();
+      if (!rows[0]) {
+        const bundle = validateBundle({
+          incident_id: input.createIncident.incidentId,
+          payment_id: input.paymentId,
+          idempotency_key: input.createIncident.idempotencyKey,
+          evidence: [input.evidence],
+        });
+        const seed = derivePaymentSeed(bundle);
+        if (!seed)
+          throw new Error("webhook evidence has no financial identity");
+        this.db
+          .insert(payments)
+          .values({
+            paymentId: bundle.payment_id,
+            state: seed.state,
+            amountMinor: seed.amount_minor,
+            currency: seed.currency,
+            operation: seed.operation,
+            operationKey: bundle.idempotency_key,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .run();
+        this.db
+          .insert(incidents)
+          .values({
+            incidentId: bundle.incident_id,
+            paymentId: bundle.payment_id,
+            idempotencyKey: bundle.idempotency_key,
+            bundle: JSON.stringify(bundle),
+          })
+          .onConflictDoNothing()
+          .run();
+        this.db
+          .update(razorpayWebhookEvents)
+          .set({ incidentId: bundle.incident_id })
+          .where(eq(razorpayWebhookEvents.eventId, input.eventId))
+          .run();
+        this.db
+          .insert(incidentProgress)
+          .values({
+            incidentId: bundle.incident_id,
+            step: "detect",
+            status: "completed",
+            updatedAt: now,
+            details: JSON.stringify({
+              trigger: "razorpay_webhook",
+              event_id: input.eventId,
+            }),
+          })
+          .onConflictDoNothing()
+          .run();
+        this.db
+          .insert(incidentProgress)
+          .values({
+            incidentId: bundle.incident_id,
+            step: "gather",
+            status: "pending",
+            updatedAt: now,
+            details: JSON.stringify({
+              trigger: "razorpay_webhook",
+              event_id: input.eventId,
+            }),
+          })
+          .onConflictDoNothing()
+          .run();
+        return {
+          status: "created" as const,
+          incidentId: bundle.incident_id,
+          eventId: input.eventId,
+          lateEvidence: false,
+          reverifyRequired: false,
+        };
+      }
+      const existing = validateBundle(JSON.parse(rows[0].bundle));
+      const duplicate = existing.evidence.some(
+        (entry) =>
+          entry.kind === "processor_webhook" &&
+          entry.payload.event_id === input.eventId,
+      );
+      if (duplicate) {
+        this.db
+          .update(razorpayWebhookEvents)
+          .set({ incidentId: existing.incident_id })
+          .where(eq(razorpayWebhookEvents.eventId, input.eventId))
+          .run();
+        return {
+          status: "duplicate" as const,
+          incidentId: existing.incident_id,
+          eventId: input.eventId,
+          lateEvidence: false,
+          reverifyRequired: false,
+        };
+      }
+      if (input.evidence.payload.idempotency_key !== existing.idempotency_key)
+        throw new Error("webhook operation identity conflicts with incident");
+      const bundle = validateBundle({
+        ...existing,
+        evidence: [...existing.evidence, input.evidence],
+      });
+      this.db
+        .update(incidents)
+        .set({ bundle: JSON.stringify(bundle) })
+        .where(eq(incidents.incidentId, existing.incident_id))
+        .run();
+      this.db
+        .update(razorpayWebhookEvents)
+        .set({ incidentId: existing.incident_id })
+        .where(eq(razorpayWebhookEvents.eventId, input.eventId))
+        .run();
+      const progress = this.db
+        .select()
+        .from(incidentProgress)
+        .where(eq(incidentProgress.incidentId, existing.incident_id))
+        .all();
+      const resolved = progress.some(
+        (entry) =>
+          entry.status === "completed" &&
+          (entry.step === "close" || entry.step === "escalate"),
+      );
+      this.db
+        .insert(incidentProgress)
+        .values({
+          incidentId: existing.incident_id,
+          step: resolved ? "verify" : "gather",
+          status: "pending",
+          updatedAt: now,
+          details: JSON.stringify({
+            trigger: "late_razorpay_webhook",
+            event_id: input.eventId,
+            reverify_required: resolved,
+          }),
+        })
+        .onConflictDoNothing()
+        .run();
+      return {
+        status: "updated" as const,
+        incidentId: existing.incident_id,
+        eventId: input.eventId,
+        lateEvidence: resolved,
+        reverifyRequired: resolved,
       };
     })();
   }

@@ -35,6 +35,11 @@ export class IncidentStore {
       .incident(id, this.secret)
       .then((bundle) => (bundle ? verifyBundle(bundle, this.secret) : null));
   }
+  incidentByPaymentId(paymentId: string) {
+    return this.repository
+      .incidentByPaymentId(paymentId)
+      .then((bundle) => (bundle ? verifyBundle(bundle, this.secret) : null));
+  }
   payment(id: string) {
     return this.repository.payment(id);
   }
@@ -69,5 +74,12 @@ export class IncidentStore {
   }
   webhookEvent(...args: Parameters<IncidentRepository["webhookEvent"]>) {
     return this.repository.webhookEvent(...args);
+  }
+  processWebhookEvidence(
+    input: Parameters<IncidentRepository["processWebhookEvidence"]>[0],
+  ) {
+    return this.repository.processWebhookEvidence(input, (bundle) =>
+      verifyBundle(bundle, this.secret),
+    );
   }
 }

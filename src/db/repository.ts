@@ -6,6 +6,7 @@ import {
   type IncidentBundle,
   type PaymentOperation,
   type PaymentState,
+  type ProcessorWebhookEvidence,
 } from "../domain/schemas";
 
 export type PaymentSeed = {
@@ -116,6 +117,27 @@ export type WebhookInput = {
   paymentId?: string;
 };
 
+export type WebhookProcessingInput = {
+  eventId: string;
+  paymentId: string;
+  evidence: ProcessorWebhookEvidence;
+  createIncident: {
+    incidentId: string;
+    idempotencyKey: string;
+  };
+};
+
+export type WebhookProcessingResult = {
+  status: "created" | "updated" | "duplicate";
+  incidentId: string;
+  eventId: string;
+  lateEvidence: boolean;
+  reverifyRequired: boolean;
+  closureInvariant?: boolean;
+};
+
+export type IncidentBundleValidator = (input: unknown) => IncidentBundle;
+
 export type RecoveryInput = Omit<RecoveryRecord, "execution_key">;
 
 export interface IncidentRepository {
@@ -123,6 +145,7 @@ export interface IncidentRepository {
   close(): Promise<void>;
   ingest(bundle: IncidentBundle, secret?: string): Promise<void>;
   incident(id: string, secret?: string): Promise<IncidentBundle | null>;
+  incidentByPaymentId(paymentId: string): Promise<IncidentBundle | null>;
   payment(id: string): Promise<PaymentRecord | undefined>;
   updatePayment(id: string, state: string): Promise<void>;
   recovery(key: string): Promise<RecoveryRecord | undefined>;
@@ -147,4 +170,8 @@ export interface IncidentRepository {
     receivedAt: string;
   }>;
   webhookEvent(eventId: string): Promise<WebhookRecord | undefined>;
+  processWebhookEvidence(
+    input: WebhookProcessingInput,
+    validateBundle: IncidentBundleValidator,
+  ): Promise<WebhookProcessingResult>;
 }

@@ -4,6 +4,8 @@ import {
   auditEvents,
   incidentProgress,
   incidents,
+  merchantOrders,
+  merchantOrderUpdates,
   payments,
   recoveries,
   razorpayWebhookEvents,
@@ -24,6 +26,9 @@ import type {
   RecoveryInput,
   WebhookInput,
   WebhookRecord,
+  WebhookProcessingInput,
+  WebhookProcessingResult,
+  IncidentBundleValidator,
 } from "./repository";
 import { derivePaymentSeed } from "./repository";
 
@@ -72,7 +77,7 @@ export class PostgresIncidentRepository implements IncidentRepository {
     await migrate(this.db, { migrationsFolder });
     if (reset) {
       await this.db.execute(
-        sql`TRUNCATE TABLE ${auditEvents}, ${recoveries}, ${incidents}, ${payments}, ${razorpayWebhookEvents}, ${incidentProgress} RESTART IDENTITY`,
+        sql`TRUNCATE TABLE ${auditEvents}, ${recoveries}, ${incidents}, ${payments}, ${razorpayWebhookEvents}, ${incidentProgress}, ${merchantOrderUpdates}, ${merchantOrders} RESTART IDENTITY`,
       );
     }
   }
@@ -147,6 +152,16 @@ export class PostgresIncidentRepository implements IncidentRepository {
       .where(eq(incidents.incidentId, id));
     if (!row) return null;
     return IncidentBundleSchema.parse(row.bundle);
+  }
+  async incidentByPaymentId(paymentId: string) {
+    const rows = await this.db
+      .select()
+      .from(incidents)
+      .where(eq(incidents.paymentId, paymentId))
+      .limit(2);
+    if (rows.length > 1)
+      throw new Error("payment is correlated to multiple incidents");
+    return rows[0] ? IncidentBundleSchema.parse(rows[0].bundle) : null;
   }
   async payment(id: string) {
     const [row] = await this.db
@@ -283,6 +298,158 @@ export class PostgresIncidentRepository implements IncidentRepository {
         eventId: row.eventId,
         eventType: row.eventType,
         receivedAt: row.receivedAt.toISOString(),
+      };
+    });
+  }
+  async processWebhookEvidence(
+    input: WebhookProcessingInput,
+    validateBundle: IncidentBundleValidator,
+  ): Promise<WebhookProcessingResult> {
+    return this.db.transaction(async (tx) => {
+      const [webhook] = await tx
+        .select()
+        .from(razorpayWebhookEvents)
+        .where(eq(razorpayWebhookEvents.eventId, input.eventId))
+        .for("update");
+      if (!webhook) throw new Error("webhook event must be ingested first");
+      if (webhook.paymentId !== input.paymentId)
+        throw new Error("webhook payment identity conflicts with evidence");
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${input.paymentId}))`,
+      );
+      const rows = await tx
+        .select()
+        .from(incidents)
+        .where(eq(incidents.paymentId, input.paymentId))
+        .limit(2)
+        .for("update");
+      if (rows.length > 1)
+        throw new Error("payment is correlated to multiple incidents");
+      const now = new Date();
+      if (!rows[0]) {
+        const bundle = validateBundle({
+          incident_id: input.createIncident.incidentId,
+          payment_id: input.paymentId,
+          idempotency_key: input.createIncident.idempotencyKey,
+          evidence: [input.evidence],
+        });
+        const seed = derivePaymentSeed(bundle);
+        if (!seed)
+          throw new Error("webhook evidence has no financial identity");
+        await tx
+          .insert(payments)
+          .values({
+            paymentId: bundle.payment_id,
+            state: seed.state,
+            amountMinor: seed.amount_minor,
+            currency: seed.currency,
+            operation: seed.operation,
+            operationKey: bundle.idempotency_key,
+            updatedAt: now,
+          })
+          .onConflictDoNothing();
+        await tx
+          .insert(incidents)
+          .values({
+            incidentId: bundle.incident_id,
+            paymentId: bundle.payment_id,
+            idempotencyKey: bundle.idempotency_key,
+            bundle,
+          })
+          .onConflictDoNothing();
+        await tx
+          .update(razorpayWebhookEvents)
+          .set({ incidentId: bundle.incident_id })
+          .where(eq(razorpayWebhookEvents.eventId, input.eventId));
+        await tx
+          .insert(incidentProgress)
+          .values([
+            {
+              incidentId: bundle.incident_id,
+              step: "detect",
+              status: "completed",
+              updatedAt: now,
+              details: { trigger: "razorpay_webhook", event_id: input.eventId },
+            },
+            {
+              incidentId: bundle.incident_id,
+              step: "gather",
+              status: "pending",
+              updatedAt: now,
+              details: { trigger: "razorpay_webhook", event_id: input.eventId },
+            },
+          ])
+          .onConflictDoNothing();
+        return {
+          status: "created",
+          incidentId: bundle.incident_id,
+          eventId: input.eventId,
+          lateEvidence: false,
+          reverifyRequired: false,
+        };
+      }
+      const existing = validateBundle(rows[0].bundle);
+      const duplicate = existing.evidence.some(
+        (entry) =>
+          entry.kind === "processor_webhook" &&
+          entry.payload.event_id === input.eventId,
+      );
+      if (duplicate) {
+        await tx
+          .update(razorpayWebhookEvents)
+          .set({ incidentId: existing.incident_id })
+          .where(eq(razorpayWebhookEvents.eventId, input.eventId));
+        return {
+          status: "duplicate",
+          incidentId: existing.incident_id,
+          eventId: input.eventId,
+          lateEvidence: false,
+          reverifyRequired: false,
+        };
+      }
+      if (input.evidence.payload.idempotency_key !== existing.idempotency_key)
+        throw new Error("webhook operation identity conflicts with incident");
+      const bundle = validateBundle({
+        ...existing,
+        evidence: [...existing.evidence, input.evidence],
+      });
+      await tx
+        .update(incidents)
+        .set({ bundle })
+        .where(eq(incidents.incidentId, existing.incident_id));
+      await tx
+        .update(razorpayWebhookEvents)
+        .set({ incidentId: existing.incident_id })
+        .where(eq(razorpayWebhookEvents.eventId, input.eventId));
+      const progress = await tx
+        .select()
+        .from(incidentProgress)
+        .where(eq(incidentProgress.incidentId, existing.incident_id));
+      const resolved = progress.some(
+        (entry) =>
+          entry.status === "completed" &&
+          (entry.step === "close" || entry.step === "escalate"),
+      );
+      await tx
+        .insert(incidentProgress)
+        .values({
+          incidentId: existing.incident_id,
+          step: resolved ? "verify" : "gather",
+          status: "pending",
+          updatedAt: now,
+          details: {
+            trigger: resolved ? "late_razorpay_webhook" : "razorpay_webhook",
+            event_id: input.eventId,
+            reverify_required: resolved,
+          },
+        })
+        .onConflictDoNothing();
+      return {
+        status: "updated",
+        incidentId: existing.incident_id,
+        eventId: input.eventId,
+        lateEvidence: resolved,
+        reverifyRequired: resolved,
       };
     });
   }
