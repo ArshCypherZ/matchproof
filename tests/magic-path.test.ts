@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +11,10 @@ import {
   IncidentStore,
   FixtureDiagnosisAdapter,
 } from "../src/incident_commander/core";
-import { runIncident } from "../src/incident_commander/workflow";
+import {
+  runIncident,
+  runIncidentBatch,
+} from "../src/incident_commander/workflow";
 import {
   parseDiagnosisOutput,
   RecommendationSchema,
@@ -374,6 +377,56 @@ describe("payment incident workflow", () => {
       expect.objectContaining({ eventType: "policy_evaluated" }),
     );
     expect(b.outcome.status).toBe("already_completed");
+    const resumedStore = new IncidentStore(state, false, secret);
+    await resumedStore.initialize();
+    const progress = await resumedStore.progress(
+      "inc_timeout_after_capture_001",
+    );
+    await resumedStore.close();
+    expect(progress.map((entry) => entry.step)).toEqual(
+      expect.arrayContaining([
+        "detect",
+        "gather",
+        "reconcile",
+        "diagnose",
+        "gate",
+        "execute",
+        "observe",
+        "verify",
+        "close",
+      ]),
+    );
+  });
+  it("does not repeat completed provider gathering after restart", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-resume-gather-"));
+    const state = path.join(dir, "incident");
+    const gather = vi.fn(async () => []);
+    const options = {
+      processorSecret: secret,
+      diagnosisAdapter: new FixtureDiagnosisAdapter(),
+      evidenceGatherer: { gather },
+    };
+    await runIncident(fixture, state, { ...options, resetState: true });
+    await runIncident(fixture, state, { ...options, resetState: false });
+    expect(gather).toHaveBeenCalledOnce();
+  });
+  it("processes incident batches sequentially", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-batch-"));
+    const results = await runIncidentBatch(
+      ["first", "second"].map((name) => ({
+        fixture,
+        state: path.join(dir, name),
+        options: {
+          resetState: true,
+          processorSecret: secret,
+          diagnosisAdapter: new FixtureDiagnosisAdapter(),
+        },
+      })),
+    );
+    expect(results.map((result) => result.outcome.status)).toEqual([
+      "reconciled",
+      "reconciled",
+    ]);
   });
   it("does not duplicate a concurrent incident or progress marker", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-concurrent-"));

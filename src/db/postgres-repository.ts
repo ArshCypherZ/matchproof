@@ -158,6 +158,30 @@ export class PostgresIncidentRepository implements IncidentRepository {
     if (!row) return null;
     return IncidentBundleSchema.parse(row.bundle);
   }
+  async updateIncident(bundle: IncidentBundle) {
+    await this.db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({
+          paymentId: incidents.paymentId,
+          idempotencyKey: incidents.idempotencyKey,
+        })
+        .from(incidents)
+        .where(eq(incidents.incidentId, bundle.incident_id))
+        .for("update");
+      if (
+        !existing ||
+        existing.paymentId !== bundle.payment_id ||
+        existing.idempotencyKey !== bundle.idempotency_key
+      )
+        throw new Error(
+          "incident update identity does not match durable state",
+        );
+      await tx
+        .update(incidents)
+        .set({ bundle })
+        .where(eq(incidents.incidentId, bundle.incident_id));
+    });
+  }
   async incidentByPaymentId(paymentId: string) {
     const rows = await this.db
       .select()

@@ -8,3 +8,4 @@ export * from "./diagnosis";
 export * from "./store";
 export * from "./recovery-executor";
 export * from "./evidence-gatherer";
+export * from "./closed-loop-controller";

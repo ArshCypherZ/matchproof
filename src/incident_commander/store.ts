@@ -30,6 +30,9 @@ export class IncidentStore {
   ingest(input: unknown) {
     return this.repository.ingest(verifyBundle(input, this.secret));
   }
+  updateIncident(input: unknown) {
+    return this.repository.updateIncident(verifyBundle(input, this.secret));
+  }
   incident(id: string) {
     return this.repository
       .incident(id, this.secret)

@@ -156,6 +156,7 @@ export interface IncidentRepository {
   initialize(reset: boolean): Promise<void>;
   close(): Promise<void>;
   ingest(bundle: IncidentBundle, secret?: string): Promise<void>;
+  updateIncident(bundle: IncidentBundle): Promise<void>;
   incident(id: string, secret?: string): Promise<IncidentBundle | null>;
   incidentByPaymentId(paymentId: string): Promise<IncidentBundle | null>;
   payment(id: string): Promise<PaymentRecord | undefined>;

@@ -155,6 +155,31 @@ export class SqliteIncidentRepository implements IncidentRepository {
       .all();
     return row ? IncidentBundleSchema.parse(JSON.parse(row.bundle)) : null;
   }
+  async updateIncident(bundle: IncidentBundle) {
+    this.connection.client.transaction(() => {
+      const [existing] = this.db
+        .select({
+          paymentId: incidents.paymentId,
+          idempotencyKey: incidents.idempotencyKey,
+        })
+        .from(incidents)
+        .where(eq(incidents.incidentId, bundle.incident_id))
+        .all();
+      if (
+        !existing ||
+        existing.paymentId !== bundle.payment_id ||
+        existing.idempotencyKey !== bundle.idempotency_key
+      )
+        throw new Error(
+          "incident update identity does not match durable state",
+        );
+      this.db
+        .update(incidents)
+        .set({ bundle: JSON.stringify(bundle) })
+        .where(eq(incidents.incidentId, bundle.incident_id))
+        .run();
+    })();
+  }
   async incidentByPaymentId(paymentId: string) {
     const rows = this.db
       .select()
