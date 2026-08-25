@@ -8,6 +8,7 @@ import {
 } from "../domain/schemas";
 import Groq from "groq-sdk";
 import type { ChatCompletionCreateParams } from "groq-sdk/resources/chat/completions";
+import type { RazorpayMcpReadGateway } from "./razorpay-mcp";
 
 type DiagnosisContext = {
   bundle: IncidentBundle;
@@ -82,6 +83,7 @@ export class LiveDiagnosisAdapter {
   readonly timeoutMs: number;
   private readonly apiKey: string;
   private readonly transport: GroqTransport;
+  private readonly mcpGateway: RazorpayMcpReadGateway | undefined;
 
   constructor(
     options: {
@@ -89,9 +91,11 @@ export class LiveDiagnosisAdapter {
       model?: string;
       timeoutMs?: number;
       transport?: GroqTransport;
+      mcpGateway?: RazorpayMcpReadGateway;
     } = {},
   ) {
     this.apiKey = options.apiKey ?? process.env.GROQ_API_KEY ?? "";
+    this.mcpGateway = options.mcpGateway;
     this.model =
       options.model ?? process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
     this.timeoutMs =
@@ -145,6 +149,7 @@ export class LiveDiagnosisAdapter {
       },
       evidence_timeline: reconstruction.timeline,
       current_state: reconstruction.current_state,
+      available_read_tools: this.mcpGateway?.tools ?? [],
       reconciliation,
     });
     try {
