@@ -370,6 +370,9 @@ describe("payment incident workflow", () => {
       });
     expect(a.outcome.status).toBe("reconciled");
     expect(a.payment_state.state).toBe("captured_verified");
+    expect(a.audit_records).toContainEqual(
+      expect.objectContaining({ eventType: "policy_evaluated" }),
+    );
     expect(b.outcome.status).toBe("already_completed");
   });
   it("does not duplicate a concurrent incident or progress marker", async () => {

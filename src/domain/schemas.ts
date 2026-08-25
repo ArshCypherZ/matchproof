@@ -783,6 +783,7 @@ export const PolicyGateDecisionSchema = z
     action: ActionSchema,
     allowed: z.boolean(),
     reason: z.string().min(1),
+    approval_required: z.string().min(1).nullable(),
   })
   .strict();
 export const RecoveryOutcomeSchema = z

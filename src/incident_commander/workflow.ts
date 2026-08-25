@@ -9,10 +9,11 @@ import {
   FixtureDiagnosisAdapter,
   verifyBundle,
   reconstruct,
-  evaluate,
+  evaluateAndAudit,
   reconcile,
 } from "./core";
 import type { EvidenceGatherer } from "./evidence-gatherer";
+import type { PolicyAuditLogger } from "./policy";
 export async function runIncident(
   fixture: string,
   state: string,
@@ -81,12 +82,15 @@ export async function runIncident(
   );
   await markCompleted("diagnose", { provider: model.provenance.provider });
   const rec = model.diagnosis.recommendation;
-  let dec = evaluate(
+  const auditPolicy: PolicyAuditLogger = (event) =>
+    store.audit(event.event_type, event.payload).then(() => undefined);
+  let dec = await evaluateAndAudit(
     rec,
     saved,
     recon,
     await store.payment(saved.payment_id),
     reconciliation,
+    auditPolicy,
   );
   const gateDecisions = [dec];
   await markCompleted("gate", { allowed: dec.allowed });
@@ -98,12 +102,13 @@ export async function runIncident(
       uncertainty: dec.reason,
       evidence_ids: rec.evidence_ids,
     };
-    dec = evaluate(
+    dec = await evaluateAndAudit(
       recommendation,
       saved,
       recon,
       await store.payment(saved.payment_id),
       reconciliation,
+      auditPolicy,
     );
     gateDecisions.push(dec);
   }
