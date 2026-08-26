@@ -38,7 +38,11 @@ function fakeClient() {
       },
       fetchPayments: async (id: string) => {
         calls.push(["orders.fetchPayments", id]);
-        return { count: 1, items: [{ id: "pay_test_1", order_id: id }] };
+        return {
+          entity: "collection",
+          count: 1,
+          items: [{ id: "pay_test_1", order_id: id }],
+        };
       },
     },
     payments: {
