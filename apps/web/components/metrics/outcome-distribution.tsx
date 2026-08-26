@@ -1,11 +1,28 @@
-const items = [
-  { label: "Automatic", value: 37, className: "bg-primary" },
-  { label: "Runbook", value: 37, className: "bg-provider" },
-  { label: "No action", value: 0, className: "bg-ink-tertiary" },
-  { label: "Ambiguous", value: 63, className: "bg-warning" },
-];
+import { syntheticEvaluationMetrics as metrics } from "@/lib/metrics";
 
 export function OutcomeDistribution() {
+  const items = [
+    {
+      label: "Automatic",
+      value: metrics.automatic_count,
+      className: "bg-primary",
+    },
+    {
+      label: "Runbook",
+      value: metrics.runbook_count,
+      className: "bg-provider",
+    },
+    {
+      label: "No action",
+      value: metrics.no_action_count,
+      className: "bg-ink-tertiary",
+    },
+    {
+      label: "Ambiguous",
+      value: metrics.ambiguous_count,
+      className: "bg-warning",
+    },
+  ];
   return (
     <section aria-labelledby="outcome-heading">
       <h2 id="outcome-heading" className="text-base font-semibold">

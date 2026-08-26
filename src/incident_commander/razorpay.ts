@@ -4,18 +4,14 @@ import {
   RazorpayPaymentCollectionSchema,
   RazorpayPaymentResponseSchema,
   RazorpayWebhookBodyEnvelopeResponseSchema,
-  type RazorpayOrder as ParsedRazorpayOrder,
   type RazorpayPayment as ParsedRazorpayPayment,
-  type RazorpayPaymentCollection as ParsedRazorpayPaymentCollection,
 } from "../domain/schemas";
 
 export class RazorpayConfigurationError extends Error {}
 export class RazorpayInputError extends Error {}
 export class RazorpayWebhookVerificationError extends Error {}
 
-export type RazorpayOrder = ParsedRazorpayOrder;
 export type RazorpayPayment = ParsedRazorpayPayment;
-export type RazorpayPaymentCollection = ParsedRazorpayPaymentCollection;
 
 export type RazorpayClient = {
   orders: {

@@ -68,12 +68,22 @@ export default function MetricsPage() {
           <h2 id="closure-heading" className="mb-6 text-base font-semibold">
             Closure and safety
           </h2>
-          <div className="grid gap-8 sm:grid-cols-3">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <MetricBand
               value={percent(metrics.afterstate_verification_coverage)}
               label="Afterstate coverage"
               source={source}
               tone="warning"
+            />
+            <MetricBand
+              value={
+                metrics.duplicate_action_prevention_count !== null
+                  ? String(metrics.duplicate_action_prevention_count)
+                  : "Unavailable"
+              }
+              label="Duplicate actions prevented"
+              source={source}
+              tone="safe"
             />
             <MetricBand
               value={String(metrics.unsafe_recommendations)}
@@ -110,9 +120,9 @@ export default function MetricsPage() {
           <div>
             <h2 className="text-sm font-semibold">Unavailable measurements</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Duplicate-action prevention, operator review time, and provider or
-              merchant integration failure counts have no recorded denominator
-              in the current evaluation. They are unavailable, not zero.
+              Operator review time and provider or merchant integration failure
+              counts have no recorded denominator in the current evaluation.
+              They are unavailable, not zero.
             </p>
           </div>
         </div>

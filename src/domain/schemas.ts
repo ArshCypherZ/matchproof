@@ -105,8 +105,8 @@ export const RazorpayPaymentSchema = z
     email: nullableString,
     contact: nullableString,
     notes: notes.optional(),
-    fee: nonNegativePaise.optional(),
-    tax: nonNegativePaise.optional(),
+    fee: nonNegativePaise.nullable().optional(),
+    tax: nonNegativePaise.nullable().optional(),
     error_code: z.string().nullable(),
     error_description: z.string().nullable(),
     error_source: nullableString,
@@ -140,13 +140,13 @@ export const RazorpayOrderResponseSchema = RazorpayOrderSchema.strip();
 
 export const RazorpayOrderPaymentSchema = z
   .object({ id: identifier("pay"), order_id: identifier("order") })
-  .strict();
+  .strip();
 export const RazorpayPaymentCollectionSchema = z
   .object({
     count: z.number().int().nonnegative(),
     items: z.array(RazorpayOrderPaymentSchema),
   })
-  .strict();
+  .strip();
 
 export const RazorpayWebhookEventTypeSchema = z.enum([
   "payment.authorized",
@@ -529,33 +529,8 @@ export const EvidenceSchema = z.discriminatedUnion("kind", [
   ProviderOrderFetchEvidenceSchema,
 ]);
 export type Evidence = z.infer<typeof EvidenceSchema>;
-export type PaymentRequestEvidence = z.infer<
-  typeof PaymentRequestEvidenceSchema
->;
-export type ProcessorTimeoutEvidence = z.infer<
-  typeof ProcessorTimeoutEvidenceSchema
->;
-export type InternalStateEvidence = z.infer<typeof InternalStateEvidenceSchema>;
 export type ProcessorWebhookEvidence = z.infer<
   typeof ProcessorWebhookEvidenceSchema
->;
-export type MerchantOrderStateEvidence = z.infer<
-  typeof MerchantOrderStateEvidenceSchema
->;
-export type CallbackObservationEvidence = z.infer<
-  typeof CallbackObservationEvidenceSchema
->;
-export type WebhookDeliveryEvidence = z.infer<
-  typeof WebhookDeliveryEvidenceSchema
->;
-export type SettlementObservationEvidence = z.infer<
-  typeof SettlementObservationEvidenceSchema
->;
-export type ProviderPaymentFetchEvidence = z.infer<
-  typeof ProviderPaymentFetchEvidenceSchema
->;
-export type ProviderOrderFetchEvidence = z.infer<
-  typeof ProviderOrderFetchEvidenceSchema
 >;
 
 export const IncidentBundleSchema = z

@@ -45,7 +45,8 @@
     "src/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.mts",
-    "drizzle.config.ts"
+    "drizzle.config.ts",
+    "drizzle.sqlite.config.ts"
   ],
   "exclude": ["node_modules", "dist", "apps/web"]
 }

@@ -39,6 +39,23 @@ to BullMQ. Workers can consume `incident-processing`, `evidence-gathering`, and
 `batch-evaluation`; jobs retry with exponential backoff and exhausted jobs are
 published to `dead-letter` for operator escalation.
 
+## Web Application
+
+Development server:
+
+```bash
+pnpm run dev
+```
+
+Production build and server:
+
+```bash
+pnpm run build
+pnpm --dir apps/web start
+```
+
+The web dashboard displays incident queues, evidence timelines, batch evaluation progress, and baseline metrics.
+
 ## Verify
 
 ```bash
