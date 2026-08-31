@@ -62,8 +62,9 @@ Every exception stays in the queue with its evidence, a named owner, and why it 
 
 Requires Node 22+, pnpm 11, Docker.
 
+Copy .env.example to .env
+
 ```bash
-cp .env.example .env
 docker compose up --build        # dashboard on http://localhost:3101
 ```
 
