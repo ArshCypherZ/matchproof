@@ -32,21 +32,21 @@ describe("BullMQ queue contracts", () => {
       "webhook:pay_1",
     );
     expect((incident.jobs[0] as unknown[])[2]).toMatchObject({
-      jobId: "incident:inc_123",
+      jobId: "incident-inc_123",
       attempts: 5,
     });
     expect((incident.jobs[1] as unknown[])[2]).toMatchObject({
-      jobId: "incident:inc_123",
+      jobId: "incident-inc_123",
     });
     expect((evidence.jobs[0] as unknown[])[2]).toMatchObject({
-      jobId: "evidence:webhook:pay_1",
+      jobId: "evidence-webhook-pay_1",
     });
     await addWebhookIncidentJob(
       { incidentProcessing: incident as never },
       "evt_1",
     );
     expect((incident.jobs[2] as unknown[])[2]).toMatchObject({
-      jobId: "webhook:evt_1",
+      jobId: "webhook-evt_1",
     });
   });
 

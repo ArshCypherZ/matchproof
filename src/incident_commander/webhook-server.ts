@@ -2,7 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { EvidenceGatherer, IncidentStore } from "./core";
 import { createRazorpayWebhookServer, RazorpayWebhookInbox } from "./webhook";
-import { addWebhookIncidentJob, createQueues } from "../queue";
+import {
+  QUEUE_NAMES,
+  addWebhookIncidentJob,
+  createQueueWorker,
+  createQueues,
+} from "../queue";
 
 function loadLocalEnv() {
   const envPath = path.resolve(".env");
@@ -31,6 +36,38 @@ async function main() {
     evidenceGatherer: new EvidenceGatherer(),
   });
   const queues = process.env.REDIS_URL ? createQueues() : undefined;
+  // Consume the webhook jobs this server enqueues so accepted events become
+  // incidents without a separate worker process. Jobs of other names are
+  // bookkeeping enqueued by the dashboard batch API and complete as no-ops:
+  // their progress records are written synchronously by that API.
+  const worker = queues
+    ? createQueueWorker(
+        QUEUE_NAMES.incidentProcessing,
+        async (job) => {
+          if (job.name !== "process-webhook-event") return;
+          const result = await inbox.process(String(job.data.eventId), {
+            webhookSecret: secret,
+            processorSecret,
+          });
+          console.log(
+            JSON.stringify({
+              event: "webhook_processed",
+              job_id: job.id,
+              status: result?.status ?? "stored_unmatched",
+            }),
+          );
+        },
+        { concurrency: 1, deadLetter: queues.deadLetter },
+      )
+    : undefined;
+  worker?.worker.on("error", (error) => {
+    console.log(
+      JSON.stringify({
+        event: "queue_worker_error",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  });
   const server = createRazorpayWebhookServer(inbox, {
     webhookSecret: secret,
     processorSecret,
@@ -56,7 +93,9 @@ async function main() {
   });
 
   function shutdown() {
-    server.close(() => void Promise.all([store.close(), queues?.close()]));
+    server.close(
+      () => void Promise.all([store.close(), queues?.close(), worker?.close()]),
+    );
   }
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);

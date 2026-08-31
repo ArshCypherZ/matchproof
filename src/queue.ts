@@ -30,6 +30,12 @@ const retryOptions: JobsOptions = {
   removeOnFail: { age: 604_800, count: 10_000 },
 };
 
+// BullMQ reserves ":" as a separator inside job ids, so custom ids are
+// joined with "-" and any ":" in the value itself is replaced.
+function customJobId(prefix: string, value: string) {
+  return `${prefix}-${value.replace(/:/g, "-")}`;
+}
+
 export function createQueueConnection(options: QueueConnectionOptions = {}) {
   const url = options.url ?? process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
   return new IORedis(url, {
@@ -77,7 +83,7 @@ export function addIncidentJob(
   return queues.incidentProcessing.add(
     "process-incident",
     { incidentId, ...data },
-    { ...retryOptions, jobId: `incident:${incidentId}` },
+    { ...retryOptions, jobId: customJobId("incident", incidentId) },
   );
 }
 
@@ -88,7 +94,7 @@ export function addWebhookIncidentJob(
   return queues.incidentProcessing.add(
     "process-webhook-event",
     { eventId },
-    { ...retryOptions, jobId: `webhook:${eventId}` },
+    { ...retryOptions, jobId: customJobId("webhook", eventId) },
   );
 }
 
@@ -100,7 +106,7 @@ export function addBatchJob(
   return queues.batchEvaluation.add(
     "evaluate-batch",
     { batchId, incidentIds },
-    { ...retryOptions, jobId: `batch:${batchId}` },
+    { ...retryOptions, jobId: customJobId("batch", batchId) },
   );
 }
 
@@ -112,7 +118,7 @@ export function addEvidenceJob(
   return queues.evidenceGathering.add(
     "gather-evidence",
     { paymentId, idempotencyKey },
-    { ...retryOptions, jobId: `evidence:${idempotencyKey}` },
+    { ...retryOptions, jobId: customJobId("evidence", idempotencyKey) },
   );
 }
 
@@ -182,6 +188,6 @@ export async function publishDeadLetter(
       data,
       error: error instanceof Error ? error.message : String(error),
     },
-    { jobId: `dead-letter:${queue}:${jobId}` },
+    { jobId: customJobId("dead-letter", `${queue}-${jobId}`) },
   );
 }
