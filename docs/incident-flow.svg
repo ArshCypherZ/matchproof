@@ -50,7 +50,7 @@
 <text x="350" y="527" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#57534a">nine checks: amount, currency, order,</text>
 <text x="350" y="542" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#57534a">timing, duplicates, authenticity...</text>
 <rect x="300" y="620" width="360" height="106" rx="10" fill="#fbf8f1" stroke="#181715" stroke-width="2"/>
-<text x="320" y="663" font-family="Helvetica, Arial, sans-serif" font-size="16.5" font-weight="bold" fill="#181715">The gate</text>
+<text x="320" y="663" font-family="Helvetica, Arial, sans-serif" font-size="16.5" font-weight="bold" fill="#181715">The rules decide</text>
 <text x="320" y="680" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#57534a">is the fix provable on the facts pulled?</text>
 <text x="320" y="695" font-family="Helvetica, Arial, sans-serif" font-size="12.5" fill="#57534a">captures, refunds, payouts: always blocked</text>
 <rect x="100" y="790" width="290" height="90" rx="10" fill="#fbf8f1" stroke="#cec7ba" stroke-width="1.2"/>

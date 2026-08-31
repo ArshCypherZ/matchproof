@@ -1,8 +1,8 @@
 # Matchproof
 
-Matchproof fixes the payment-captured-but-order-still-pending problem that every Razorpay merchant runs into. We built our own reconciliation algorithm: it checks nine things about a payment before it touches an order. On 100 labeled test records it closed 37 end to end with zero wrong fixes, and parked the other 63 in a review queue with the evidence and a reason attached to each.
+Matchproof fixes a problem every Razorpay merchant runs into: a payment captures, but the merchant order stays pending. We built our own reconciliation algorithm: it checks nine things about a payment before it touches an order. On 100 synthetic test records it closed 37 end to end with zero wrong fixes, and kept the other 63 in a review queue with the evidence and a reason attached to each.
 
-Built for the AI Finance Controller track: run one finance-operations loop over a batch, report the match rate, keep the exceptions honest.
+Built for the AI Finance Controller track: run one finance-operations loop over a batch of records, report the match rate, and keep every unresolved exception visible.
 
 ## Run the demo
 
@@ -10,19 +10,19 @@ Built for the AI Finance Controller track: run one finance-operations loop over 
 pnpm install && pnpm demo
 ```
 
-Plays one incident end to end against a fixture: a payment that timed out after the order mutated. You see the evidence pulled, all nine checks run, the gate's decision, the repair, and the re-check that closes it. No keys, no services, no database.
+Runs one incident from the test set end to end: a payment that timed out after the order record changed. You see the evidence pulled, all nine checks run, the decision, the repair, and the re-check that closes it. No keys, no services, no database.
 
 ## The system
 
 <p align="center"><img src="docs/architecture-system.svg" alt="Matchproof system architecture: a Next.js dashboard and dashboard API sit on top of our TypeScript algorithm at its core; Razorpay feeds it verified webhooks and answers its payment reads; a Groq model advises read-only; Postgres, SQLite, a Redis job queue, and OpenTelemetry sit underneath." width="820"></p>
 
-The AI can look, but it cannot touch anything. A fixed rule set inside our algorithm is the only thing allowed to write.
+The AI advisor can read and suggest; the fixed rules inside our algorithm are the only thing that can write.
 
 ## One incident, end to end
 
-<p align="center"><img src="docs/incident-flow.svg" alt="Incident flow: a customer pays, the order stays unpaid, our algorithm pulls both records and runs nine checks, the gate decides if the fix is provable, the order is updated and both records re-read. 37 of 100 close verified; 63 land in an exception queue with evidence, an owner, and a reason; an AI advisor names the missing facts, five calls per batch; the operator reviews in the dashboard and approvals re-enter the same checks." width="600"></p>
+<p align="center"><img src="docs/incident-flow.svg" alt="Incident flow: a customer pays, the order stays unpaid, our algorithm pulls both records and runs nine checks, the rules decide if the fix is provable, the order is updated and both records re-read. 37 of 100 close verified; 63 land in an exception queue with evidence, an owner, and a reason; an AI advisor names the missing facts, five calls per batch; the operator reviews in the dashboard and approvals re-enter the same checks." width="600"></p>
 
-The numbers on the diagram come from 100 held-out labeled records: 120 synthetic incidents generated across eight failure templates, split 20 train / 100 held-out. The AI's five calls go to the 63 hard rows, not the 37 easy ones.
+The numbers on the diagram come from a labeled test set: 120 synthetic incidents across eight failure templates, 20 used while building the system and 100 held back for scoring. The AI's five calls go to the 63 hard rows, not the 37 easy ones.
 
 ## Results
 
@@ -36,7 +36,7 @@ The numbers on the diagram come from 100 held-out labeled records: 120 synthetic
 | Speed | 16.3 rows/s | 1.4 rows/s |
 | Model calls for the batch | 0 | 5 |
 
-The dataset is synthetic and labeled, so these scores say what the loop does on generated incidents, not on production traffic. Reproduce them with `pnpm evaluate:baseline` and `pnpm evaluate:full`; raw output lands in `evaluation/baseline.json` and `evaluation/full-evaluation.json`.
+The dataset is synthetic, so these scores describe generated incidents, not production traffic. Reproduce the run with `pnpm evaluate:baseline` and `pnpm evaluate:full`; raw output lands in `evaluation/baseline.json` and `evaluation/full-evaluation.json`.
 
 ## The 63 that stay open
 
@@ -50,15 +50,15 @@ The 37 closures are the rows where Razorpay's API settles the question: a late a
 | `paid_missing` (12) | Whether the order was updated locally through another flow. Same unreadable merchant-side state. |
 | `one_payment_two_orders` (12) | Which of the two orders owns the money. That is a merchant business decision, not an API fact. |
 
-Every exception stays in the queue with its evidence, a named owner, and why it stopped. Handing those rows to a human is what makes the 37 closures safe to trust. The AI tier helps here: five model calls cover the whole batch, and the packet it writes tells the operator what is missing and what to check next.
+Every exception stays in the queue with its evidence, a named owner, and why it stopped. Handing those rows to a human is what makes the 37 closures safe to trust. The AI tier helps here: five model calls cover the whole batch, and the summary it writes for each exception tells the operator what is missing and what to check next.
 
 ## Safety
 
-- The loop acts only on evidence verified as coming from Razorpay, signed so nothing forged gets in.
+- The system acts only on evidence verified as coming from Razorpay, signed so nothing forged gets in.
 - The only write it can make is aligning the merchant order to verified payment state. Captures, refunds, payouts, fulfilment, and arbitrary writes are blocked and audited.
 - The AI tier is read-only. It suggests; the rule set decides.
 - Every repair runs under an idempotency key, so a lost acknowledgement cannot apply it twice, and both records are re-read before anything closes.
-- Everything lands in an audit log nobody can rewrite. Six adversarial tests pass: prompt injection, unsupported tool calls, stale data, contradictory post-repair state, replay, duplicate webhooks.
+- Everything lands in an audit log nobody can rewrite. Six adversarial tests pass: prompt injection, unsupported tool calls, stale data, contradictory results after a fix, replay, duplicate webhooks.
 
 ## Quick start
 
