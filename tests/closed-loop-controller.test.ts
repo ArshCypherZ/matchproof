@@ -157,7 +157,7 @@ describe("ClosedLoopController", () => {
     expect(FAILURE_SCENARIOS).toHaveLength(12);
     expect(new Set(FAILURE_SCENARIOS.map(({ id }) => id)).size).toBe(12);
     expect(failureScenario("merchant_ack_loss").response).toBe("verify_state");
-    expect(failureScenario("contradictory_afterstate").response).toBe(
+    expect(failureScenario("contradictory_post_repair_state").response).toBe(
       "escalate",
     );
   });

@@ -53,7 +53,7 @@ function webhookBody(
 }
 
 describeLive("Razorpay Test-mode end-to-end loop", () => {
-  it("creates an order, ingests a signed webhook, repairs merchant state, and verifies fresh afterstate", async () => {
+  it("creates an order, ingests a signed webhook, repairs merchant state, and verifies fresh post-repair state", async () => {
     const client = createTestModeClient() as unknown as RazorpayClient;
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
     const processorSecret = process.env.PROCESSOR_WEBHOOK_SECRET;
@@ -170,7 +170,7 @@ describeLive("Razorpay Test-mode end-to-end loop", () => {
 
       const diagnosisAdapter = {
         provider: "t024-live",
-        model: "deterministic-live-test",
+        model: "rule-based-live-test",
         diagnose: (
           bundle: IncidentBundle,
           reconstruction: Reconstruction,
@@ -199,14 +199,14 @@ describeLive("Razorpay Test-mode end-to-end loop", () => {
                 reasoning:
                   "Apply the verified captured state to the merchant order.",
                 uncertainty:
-                  "Fresh afterstate must confirm provider and merchant agreement.",
+                  "Fresh post-repair state must confirm provider and merchant agreement.",
                 evidence_ids: evidenceIds,
               },
             },
             provenance: {
               provider: "t024-live",
-              requested_model: "deterministic-live-test",
-              returned_model: "deterministic-live-test",
+              requested_model: "rule-based-live-test",
+              returned_model: "rule-based-live-test",
               request_id: `t024-${bundle.incident_id}`,
               strict_schema: true,
             },
@@ -228,10 +228,10 @@ describeLive("Razorpay Test-mode end-to-end loop", () => {
 
       expect(result.reconciliation.incident_class).toBe("paid_pending");
       expect(result.outcome.status).toBe("reconciled");
-      expect(result.afterstate_verification?.status).toBe("verified");
-      if (result.afterstate_verification?.status !== "verified")
-        throw new Error("live afterstate was not verified");
-      expect(result.afterstate_verification.observation.invariant_holds).toBe(
+      expect(result.post_repair_state_verification?.status).toBe("verified");
+      if (result.post_repair_state_verification?.status !== "verified")
+        throw new Error("live post-repair state was not verified");
+      expect(result.post_repair_state_verification.observation.invariant_holds).toBe(
         true,
       );
       expect(result.payment_state.state).toBe("paid");
@@ -242,7 +242,7 @@ describeLive("Razorpay Test-mode end-to-end loop", () => {
       ).resolves.toMatchObject({ state: "paid", payment_id: payment.id });
       expect(result.audit_records).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ event_type: "afterstate_observed" }),
+          expect.objectContaining({ event_type: "post_repair_state_observed" }),
         ]),
       );
     } finally {

@@ -13,7 +13,7 @@ import {
   DiagnosisOutputSchema,
   RecommendationSchema,
   type Action,
-  type AfterstateObservation,
+  type PostRepairStateObservation,
   type IncidentBundle,
 } from "../src/domain/schemas";
 import {
@@ -28,9 +28,9 @@ import {
 } from "../src/incident_commander/core";
 import { RazorpayMcpReadGateway } from "../src/incident_commander/razorpay-mcp";
 import {
-  AfterstateVerifier,
-  type ProviderAfterstateAdapter,
-} from "../src/incident_commander/afterstate-verifier";
+  PostRepairStateVerifier,
+  type ProviderPostRepairStateAdapter,
+} from "../src/incident_commander/post-repair-state-verifier";
 import {
   RazorpayWebhookConflictError,
   RazorpayWebhookInbox,
@@ -128,16 +128,16 @@ class MemoryRecoveryRepository {
   }
 }
 
-class MemoryAfterstateRepository {
-  observations = new Map<string, AfterstateObservation>();
+class MemoryPostRepairStateRepository {
+  observations = new Map<string, PostRepairStateObservation>();
 
-  async afterstateObservation(key: string) {
+  async postRepairStateObservation(key: string) {
     return this.observations.get(key);
   }
 
-  async saveAfterstateObservation(
+  async savePostRepairStateObservation(
     key: string,
-    observation: AfterstateObservation,
+    observation: PostRepairStateObservation,
   ) {
     if (this.observations.has(key)) return false;
     this.observations.set(key, observation);
@@ -148,7 +148,7 @@ class MemoryAfterstateRepository {
 const recoveryDecision = {
   action: "reconcile_internal_state" as const,
   allowed: true,
-  reason: "approved by deterministic policy",
+  reason: "approved by rule-based policy",
   approval_required: null,
 };
 const recoveryContext = {
@@ -381,7 +381,7 @@ describe("T-019 red-team controls", () => {
     }).diagnose(injectedBundle, injectedReconstruction, injectedReconciliation);
     for (const injection of attacks.prompt_injections)
       expect(prompt).not.toContain(injection);
-    // The advisory action is derived from deterministic reconciliation, so an
+    // The advisory action is derived from rule-based reconciliation, so an
     // injected recommendation can never reach the policy gate as a financial
     // mutation.
     expect(diagnosis.diagnosis.recommendation.action).not.toBe("refund");
@@ -493,7 +493,7 @@ describe("T-019 red-team controls", () => {
     });
   });
 
-  it("replays successful execution and afterstate verification after restart without side effects", async () => {
+  it("replays successful execution and post-repair state verification after restart without side effects", async () => {
     const repository = new MemoryRecoveryRepository();
     const updateOrderState = vi.fn(async () => ({
       acknowledgement: {
@@ -526,8 +526,8 @@ describe("T-019 red-team controls", () => {
     expect(updateOrderState).toHaveBeenCalledOnce();
     expect(repository.recoveries.size).toBe(1);
 
-    const afterstateRepository = new MemoryAfterstateRepository();
-    const provider: ProviderAfterstateAdapter = {
+    const postRepairStateRepository = new MemoryPostRepairStateRepository();
+    const provider: ProviderPostRepairStateAdapter = {
       fetchPayment: vi.fn(async () => ({
         entity: "payment" as const,
         id: recoveryContext.paymentId,
@@ -561,17 +561,17 @@ describe("T-019 red-team controls", () => {
       currency: "INR",
     };
     await expect(
-      new AfterstateVerifier(afterstateRepository, provider, merchant).verify(
+      new PostRepairStateVerifier(postRepairStateRepository, provider, merchant).verify(
         verificationContext,
       ),
     ).resolves.toMatchObject({ status: "verified", replayed: false });
-    const restartProvider: ProviderAfterstateAdapter = {
+    const restartProvider: ProviderPostRepairStateAdapter = {
       fetchPayment: vi.fn(),
     };
     const restartMerchant = merchantAdapter(vi.fn());
     await expect(
-      new AfterstateVerifier(
-        afterstateRepository,
+      new PostRepairStateVerifier(
+        postRepairStateRepository,
         restartProvider,
         restartMerchant,
       ).verify(verificationContext),

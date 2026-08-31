@@ -2,7 +2,7 @@ import {
   PaymentOperationSchema,
   PaymentStateSchema,
   type Action,
-  type AfterstateObservation,
+  type PostRepairStateObservation,
   type Evidence,
   type IncidentBundle,
   type PaymentOperation,
@@ -178,13 +178,13 @@ export interface IncidentRepository {
     >,
   ): Promise<void>;
   completeRecovery(key: string, value: RecoveryInput): Promise<void>;
-  saveAfterstateObservation(
+  savePostRepairStateObservation(
     executionKey: string,
-    observation: AfterstateObservation,
+    observation: PostRepairStateObservation,
   ): Promise<boolean>;
-  afterstateObservation(
+  postRepairStateObservation(
     executionKey: string,
-  ): Promise<AfterstateObservation | undefined>;
+  ): Promise<PostRepairStateObservation | undefined>;
   audit(type: string, payload: unknown): Promise<number | undefined>;
   auditRecords(): Promise<import("../domain/schemas").AuditEvent[]>;
   setProgress(

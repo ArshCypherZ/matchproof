@@ -26,11 +26,11 @@ import type { PolicyAuditLogger } from "./policy";
 import { RecoveryExecutor } from "./recovery-executor";
 import type { MerchantPlatformAdapter } from "../db/merchant-platform-adapter";
 import {
-  AfterstateVerifier,
-  RazorpayProviderAfterstateAdapter,
-  type AfterstateVerificationResult,
-  type ProviderAfterstateAdapter,
-} from "./afterstate-verifier";
+  PostRepairStateVerifier,
+  RazorpayProviderPostRepairStateAdapter,
+  type PostRepairStateVerificationResult,
+  type ProviderPostRepairStateAdapter,
+} from "./post-repair-state-verifier";
 import {
   ClosedLoopController,
   type ClosedLoopStepDefinition,
@@ -59,7 +59,7 @@ export type RunIncidentOptions = {
   diagnosisMode?: string;
   evidenceGatherer?: Pick<EvidenceGatherer, "gather">;
   merchantPlatformAdapter?: MerchantPlatformAdapter;
-  providerAfterstateAdapter?: ProviderAfterstateAdapter;
+  providerPostRepairStateAdapter?: ProviderPostRepairStateAdapter;
   tenantId?: string;
   maxIterations?: number;
   mode?: "fixture" | "live";
@@ -81,7 +81,7 @@ export type IncidentRunResult = {
   resumed_from?: string;
   gate_decisions: PolicyGateDecision[];
   outcome: RecoveryOutcome;
-  afterstate_verification?: AfterstateVerificationResult;
+  post_repair_state_verification?: PostRepairStateVerificationResult;
   payment_state: NonNullable<Awaited<ReturnType<IncidentStore["payment"]>>>;
   audit_records: unknown[];
   state_path: string;
@@ -104,7 +104,7 @@ const escalationOutcome = (
     reason,
     escalation_reason: escalationReason,
     terminal_owner: "payment-operations",
-    policy_version: "deterministic-policy-v1",
+    policy_version: "rule-based-policy",
     credential_scope: "merchant-state-reconciliation",
   });
 
@@ -144,7 +144,7 @@ const escalationDiagnosis = (
       },
     },
     provenance: {
-      provider: "deterministic-controller",
+      provider: "rule-based-controller",
       requested_model: "none",
       returned_model: "none",
       request_id: `controller-escalation:${bundle.incident_id}`,
@@ -181,10 +181,10 @@ export async function runIncident(
   let gateDecisions: PolicyGateDecision[] = [];
   let decision: PolicyGateDecision | undefined;
   let outcome: RecoveryOutcome | undefined;
-  let afterstateVerification: AfterstateVerificationResult | undefined;
+  let postRepairStateVerification: PostRepairStateVerificationResult | undefined;
   let paymentAfter:
     NonNullable<Awaited<ReturnType<IncidentStore["payment"]>>> | undefined;
-  // A merchant afterstate contract is required for every merchant-state
+  // A merchant post-repair state contract is required for every merchant-state
   // reconciliation. Seed the order identity from the signed bundle so replay
   // paths enforce the same contract as the first execution.
   let orderId: string | undefined = initialBundle.evidence.find(
@@ -385,12 +385,12 @@ export async function runIncident(
             (!opts.merchantPlatformAdapter || !orderId)
           ) {
             const reason = !opts.merchantPlatformAdapter
-              ? "blocked: merchant afterstate adapter is required before reconciliation"
+              ? "blocked: merchant post-repair state adapter is required before reconciliation"
               : "blocked: merchant order evidence is required before reconciliation";
             recommendation = {
               action: "escalate",
               reasoning:
-                "Merchant state cannot be reconciled without an independent afterstate.",
+                "Merchant state cannot be reconciled without an independent post-repair state.",
               uncertainty: reason,
               evidence_ids: model.diagnosis.recommendation.evidence_ids,
             };
@@ -426,12 +426,12 @@ export async function runIncident(
           (!opts.merchantPlatformAdapter || !orderId)
         ) {
           const reason = !opts.merchantPlatformAdapter
-            ? "blocked: merchant afterstate adapter is required before reconciliation"
+            ? "blocked: merchant post-repair state adapter is required before reconciliation"
             : "blocked: merchant order evidence is required before reconciliation";
           recommendation = {
             action: "escalate",
             reasoning:
-              "Merchant state cannot be reconciled without an independent afterstate.",
+              "Merchant state cannot be reconciled without an independent post-repair state.",
             uncertainty: reason,
             evidence_ids: model.diagnosis.recommendation.evidence_ids,
           };
@@ -493,7 +493,7 @@ export async function runIncident(
         ) {
           const key = `escalate:${bundle.incident_id}:${bundle.payment_id}:${bundle.idempotency_key}`;
           const reason = !opts.merchantPlatformAdapter
-            ? "merchant afterstate adapter is required before reconciliation"
+            ? "merchant post-repair state adapter is required before reconciliation"
             : "merchant order evidence is required before reconciliation";
           outcome = escalationOutcome(
             "escalate",
@@ -601,7 +601,7 @@ export async function runIncident(
                   after_state: payment.state,
                   reason:
                     recommendation.action === "no_action_required"
-                      ? "deterministic reconciliation proved no action is required"
+                      ? "rule-based reconciliation proved no action is required"
                       : "durable merchant state reconciled from verified processor evidence",
                 });
         }
@@ -623,19 +623,19 @@ export async function runIncident(
         )
           return {
             status: "completed" as const,
-            details: { afterstate_status: "not_required" },
+            details: { post_repair_state_status: "not_required" },
           };
         if (!orderId)
           throw new Error(
-            "merchant order evidence is required for afterstate verification",
+            "merchant order evidence is required for post-repair state verification",
           );
         const payment = await store.payment(bundle.payment_id);
         if (!payment)
           throw new Error(`payment ${bundle.payment_id} was not persisted`);
-        afterstateVerification = await new AfterstateVerifier(
+        postRepairStateVerification = await new PostRepairStateVerifier(
           store,
-          opts.providerAfterstateAdapter ??
-            new RazorpayProviderAfterstateAdapter(),
+          opts.providerPostRepairStateAdapter ??
+            new RazorpayProviderPostRepairStateAdapter(),
           opts.merchantPlatformAdapter,
         ).verify({
           executionKey,
@@ -649,19 +649,19 @@ export async function runIncident(
             ? "authorized"
             : "captured",
         });
-        await store.audit("afterstate_observed", afterstateVerification);
-        if (afterstateVerification.status === "held")
+        await store.audit("post_repair_state_observed", postRepairStateVerification);
+        if (postRepairStateVerification.status === "held")
           return {
             status: "retry" as const,
             response: "retry_safe_read" as const,
-            details: { reasons: afterstateVerification.reasons },
+            details: { reasons: postRepairStateVerification.reasons },
           };
-        if (afterstateVerification.status === "verified") {
+        if (postRepairStateVerification.status === "verified") {
           // The durable payment record carries the verified result so the
           // reported payment state and the stored row cannot disagree.
           await store.updatePayment(bundle.payment_id, "paid");
         }
-        if (!outcome && afterstateVerification.status === "verified") {
+        if (!outcome && postRepairStateVerification.status === "verified") {
           const beforeState = executionBeforeState ?? payment.state;
           outcome = RecoveryOutcomeSchema.parse({
             status: "reconciled",
@@ -670,7 +670,7 @@ export async function runIncident(
             before_state: beforeState,
             after_state: "paid",
             reason:
-              "fresh afterstate verified the merchant repair after execution acknowledgement was lost",
+              "fresh post-repair state verified the merchant repair after execution acknowledgement was lost",
           });
           await store.completeRecovery(executionKey, {
             action: "reconcile_internal_state",
@@ -680,17 +680,17 @@ export async function runIncident(
             completed_at: new Date().toISOString(),
           });
         }
-        if (!outcome && afterstateVerification.status === "escalated")
+        if (!outcome && postRepairStateVerification.status === "escalated")
           outcome = escalationOutcome(
             "reconcile_internal_state",
             executionKey,
             executionBeforeState ?? payment.state,
-            "fresh afterstate did not satisfy the recovery invariant",
-            afterstateVerification.reasons.join("; "),
+            "fresh post-repair state did not satisfy the recovery invariant",
+            postRepairStateVerification.reasons.join("; "),
           );
         return {
           status: "completed" as const,
-          details: { afterstate_status: afterstateVerification.status },
+          details: { post_repair_state_status: postRepairStateVerification.status },
         };
       },
     },
@@ -706,33 +706,33 @@ export async function runIncident(
           );
         const details = {
           payment_state: paymentAfter.state,
-          afterstate_status: afterstateVerification?.status ?? "not_required",
+          post_repair_state_status: postRepairStateVerification?.status ?? "not_required",
         };
-        const requiresVerifiedAfterstate =
+        const requiresVerifiedPostRepairState =
           outcome.action === "reconcile_internal_state";
         if (
           (outcome.status === "reconciled" ||
             outcome.status === "already_completed") &&
-          requiresVerifiedAfterstate &&
-          afterstateVerification?.status !== "verified"
+          requiresVerifiedPostRepairState &&
+          postRepairStateVerification?.status !== "verified"
         )
           outcome = escalationOutcome(
             recommendation?.action ?? "escalate",
             outcome.idempotency_key,
             outcome.before_state,
-            afterstateVerification?.status === "held"
-              ? "fresh afterstate could not be obtained"
-              : "verified afterstate is required before terminal reconciliation",
-            afterstateVerification?.reasons.join("; ") ??
-              "no afterstate verification was performed",
+            postRepairStateVerification?.status === "held"
+              ? "fresh post-repair state could not be obtained"
+              : "verified post-repair state is required before terminal reconciliation",
+            postRepairStateVerification?.reasons.join("; ") ??
+              "no post-repair state verification was performed",
           );
         const terminal =
           (outcome.action === "reconcile_internal_state" ||
             outcome.action === "no_action_required") &&
           (outcome.status === "reconciled" ||
             outcome.status === "already_completed") &&
-          (!requiresVerifiedAfterstate ||
-            afterstateVerification?.status === "verified")
+          (!requiresVerifiedPostRepairState ||
+            postRepairStateVerification?.status === "verified")
             ? ("close" as const)
             : ("escalate" as const);
         return {
@@ -809,8 +809,8 @@ export async function runIncident(
     ...(loop.resumedFrom ? { resumed_from: loop.resumedFrom } : {}),
     gate_decisions: gateDecisions,
     outcome,
-    ...(afterstateVerification
-      ? { afterstate_verification: afterstateVerification }
+    ...(postRepairStateVerification
+      ? { post_repair_state_verification: postRepairStateVerification }
       : {}),
     payment_state: paymentAfter,
     audit_records: auditRecords,

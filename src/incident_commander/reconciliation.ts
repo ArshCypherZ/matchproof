@@ -598,7 +598,7 @@ export function reconcile(
       authenticity,
     },
     ambiguity_reasons: [...new Set(ambiguityReasons)],
-    deterministic_resolution: resolution !== "escalate",
+    rule_based_resolution: resolution !== "escalate",
     resolution,
     target_order_id: targetOrderId,
     target_state: targetState,

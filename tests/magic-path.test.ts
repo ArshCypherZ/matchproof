@@ -26,7 +26,7 @@ import {
 import { classifyIncident } from "../src/incident_commander/validation";
 import { metricsSnapshot, resetMetrics } from "../src/observability";
 import type { MerchantPlatformAdapter } from "../src/db/merchant-platform-adapter";
-import type { ProviderAfterstateAdapter } from "../src/incident_commander/afterstate-verifier";
+import type { ProviderPostRepairStateAdapter } from "../src/incident_commander/post-repair-state-verifier";
 const fixture = path.resolve("fixtures/timeout_after_mutation.json"),
   secret = "test-prototype-secret";
 const raw = () => JSON.parse(fs.readFileSync(fixture, "utf8"));
@@ -41,7 +41,7 @@ describe("payment incident workflow", () => {
       "captured_verified",
     ]);
   });
-  it("classifies all bounded incident classes deterministically", () => {
+  it("classifies all bounded incident classes by rule", () => {
     const classes = [
       "paid_pending",
       "paid_missing",
@@ -369,14 +369,14 @@ describe("payment incident workflow", () => {
                 content: JSON.stringify({
                   hypothesis: "Captured payment was observed after timeout.",
                   missing_fact: "The merchant acknowledgement was lost.",
-                  missing_fact_codes: ["afterstate_verification"],
+                  missing_fact_codes: ["post_repair_state_verification"],
                   next_safe_read: "fetch_merchant_order",
                   expected_fact: "The durable merchant order state.",
                   rationale:
                     "Signed evidence confirms the provider capture event.",
                   uncertainty: "The callback acknowledgement was lost.",
                   confidence: 0.9,
-                  stopping_condition: "Stop after the afterstate is verified.",
+                  stopping_condition: "Stop after the post-repair state is verified.",
                   operator_summary:
                     "Provider capture is verified while the merchant acknowledgement is missing.",
                   terminal_owner: "controller",
@@ -420,7 +420,7 @@ describe("payment incident workflow", () => {
       }),
     );
   });
-  it("maps the advisory action from deterministic reconciliation", async () => {
+  it("maps the advisory action from rule-based reconciliation", async () => {
     const bundle = verifyBundle(raw(), secret);
     const reconstruction = reconstruct(bundle);
     const reconciliation = reconcile(bundle);
@@ -435,14 +435,14 @@ describe("payment incident workflow", () => {
             message: {
               content: JSON.stringify({
                 hypothesis: "Captured payment observed.",
-                missing_fact: "The merchant order afterstate.",
-                missing_fact_codes: ["afterstate_verification"],
+                missing_fact: "The merchant order post-repair state.",
+                missing_fact_codes: ["post_repair_state_verification"],
                 next_safe_read: "fetch_merchant_order",
                 expected_fact: "The durable merchant order state.",
                 rationale: "Provider evidence is present.",
                 uncertainty: "Merchant acknowledgement is unresolved.",
                 confidence: 0.7,
-                stopping_condition: "Stop after the afterstate is verified.",
+                stopping_condition: "Stop after the post-repair state is verified.",
                 operator_summary: "Provider capture requires merchant repair.",
                 terminal_owner: "controller",
                 evidence_ids: [id],
@@ -507,7 +507,7 @@ describe("payment incident workflow", () => {
         throw new Error("rate limited");
       },
     }).diagnose(bundle, reconstruction, reconciliation);
-    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.provider).toBe("rule-based-fallback");
     expect(result.provenance.failure_reason).toContain("rate limited");
   });
   it("rejects live diagnosis citations outside canonical evidence", async () => {
@@ -541,7 +541,7 @@ describe("payment incident workflow", () => {
         ],
       }),
     }).diagnose(bundle, reconstruction, reconcile(bundle));
-    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.provider).toBe("rule-based-fallback");
     expect(result.provenance.failure_reason).toContain("not canonical");
     expect(result.provenance.raw_advisory).toMatchObject({
       citation_ids: ["EV-NOT-CANONICAL"],
@@ -588,7 +588,7 @@ describe("payment incident workflow", () => {
       }),
     }).diagnose(bundle, reconstruction, reconciliation);
     expect(calls).toBe(1);
-    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.provider).toBe("rule-based-fallback");
     expect(result.provenance.failure_reason).toContain("missing_fact_codes");
     expect(result.provenance.raw_advisory).toMatchObject({
       citation_valid: true,
@@ -779,7 +779,7 @@ describe("payment incident workflow", () => {
       sleep: async () => undefined,
       transport: async () => new Promise(() => undefined),
     }).diagnose(bundle, reconstruction, reconcile(bundle));
-    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.provider).toBe("rule-based-fallback");
     expect(result.provenance.failure_reason).toContain("timed out");
   });
   it("fails closed on malformed JSON when fallback is enabled", async () => {
@@ -796,7 +796,7 @@ describe("payment incident workflow", () => {
       }),
     }).diagnose(bundle, reconstruction, reconcile(bundle));
     expect(calls).toBe(1);
-    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.provider).toBe("rule-based-fallback");
     expect(result.provenance.raw_advisory).toMatchObject({
       format: "invalid",
     });
@@ -843,7 +843,7 @@ describe("payment incident workflow", () => {
       expect(() => verifyBundle(b, secret)).toThrow(EvidenceError);
     }
   });
-  it("persists and replays escalation when merchant afterstate is unavailable", async () => {
+  it("persists and replays escalation when merchant post-repair state is unavailable", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-ts-")),
       state = path.join(dir, "incident");
     const a = await runIncident(fixture, state, {
@@ -882,9 +882,9 @@ describe("payment incident workflow", () => {
       ]),
     );
   });
-  it("closes merchant reconciliation after verified afterstate and replays it without another write", async () => {
+  it("closes merchant reconciliation after a verified post-repair state and replays it without another write", async () => {
     const fixturePath = path.resolve("fixtures/paid_pending.json");
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-afterstate-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-post-repair-state-"));
     const state = path.join(dir, "incident");
     const timestamp = "2026-08-21T10:00:03.000Z";
     let merchantState: "pending" | "paid" = "pending";
@@ -920,7 +920,7 @@ describe("payment incident workflow", () => {
       updateOrderState,
       listPendingOrders: vi.fn(async () => []),
     };
-    const fetchPayment = vi.fn<ProviderAfterstateAdapter["fetchPayment"]>(
+    const fetchPayment = vi.fn<ProviderPostRepairStateAdapter["fetchPayment"]>(
       async () => ({
         entity: "payment",
         id: "pay_paid_pending_001",
@@ -939,7 +939,7 @@ describe("payment incident workflow", () => {
       processorSecret: secret,
       diagnosisAdapter: new FixtureDiagnosisAdapter(),
       merchantPlatformAdapter,
-      providerAfterstateAdapter: { fetchPayment },
+      providerPostRepairStateAdapter: { fetchPayment },
     };
     const first = await runIncident(fixturePath, state, {
       ...options,
@@ -950,9 +950,9 @@ describe("payment incident workflow", () => {
       resetState: false,
     });
     expect(first.outcome.status).toBe("reconciled");
-    expect(first.afterstate_verification?.status).toBe("verified");
+    expect(first.post_repair_state_verification?.status).toBe("verified");
     expect(replay.outcome.status).toBe("already_completed");
-    expect(replay.afterstate_verification).toMatchObject({
+    expect(replay.post_repair_state_verification).toMatchObject({
       status: "verified",
       replayed: true,
     });

@@ -6,7 +6,7 @@ import type {
 import { recordEvent, recordMetric } from "../observability";
 
 /**
- * Tier 2 input: everything the narrative needs is already deterministic —
+ * Tier 2 input: everything the narrative needs is already rule-based —
  * closure counts, per-class outcomes, and the exception rows with their
  * stopping reasons. The model only synthesizes language over it.
  */
@@ -69,7 +69,7 @@ const buildPrompt = (input: NarrativeBatchInput) =>
     })),
   });
 
-const deterministicNarrative = (
+const ruleBasedNarrative = (
   input: NarrativeBatchInput,
 ): NarrativeReport => {
   const classes = Object.entries(input.by_incident_class)
@@ -87,17 +87,17 @@ const deterministicNarrative = (
   const synthesis = [...byStoppingReason.entries()]
     .map(
       ([reason, recordIds]) =>
-        `${reason} — ${recordIds.length} record(s): ${recordIds.slice(0, 5).join(", ")}${recordIds.length > 5 ? ", …" : ""}`,
+        `${reason} (${recordIds.length} record(s)): ${recordIds.slice(0, 5).join(", ")}${recordIds.length > 5 ? ", …" : ""}`,
     )
     .join("\n");
   return {
-    batch_summary: `${input.verified_closures} of ${input.dataset_size} records closed with a verified afterstate; ${input.escalations} escalated with an accountable owner. Per class — ${classes}.`,
+    batch_summary: `${input.verified_closures} of ${input.dataset_size} records closed with a verified post-repair state; ${input.escalations} escalated with an accountable owner. Per class: ${classes}.`,
     operator_packet:
-      "Review the escalated records in the exception list, starting with the stopping reasons that group the most records. Every closed record carries a verified provider and merchant afterstate; no escalated record authorized a financial side effect, so deferral carries no money-movement risk.",
+      "Review the escalated records in the exception list, starting with the stopping reasons that group the most records. Every closed record carries a verified provider and merchant post-repair state; no escalated record authorized a financial side effect, so deferral carries no money-movement risk.",
     exception_synthesis:
       synthesis || "No exceptions were raised in this batch.",
     provenance: {
-      provider: "deterministic-narrative",
+      provider: "rule-based-narrative",
       model: "template-v1",
       generated_at: new Date().toISOString(),
       source_counts: input,
@@ -127,7 +127,7 @@ export class NarrativeGenerator {
 
   async generate(input: NarrativeBatchInput): Promise<NarrativeReport> {
     const apiKey = this.options.apiKey ?? process.env.GROQ_API_KEY ?? "";
-    if (!apiKey) return deterministicNarrative(input);
+    if (!apiKey) return ruleBasedNarrative(input);
     recordMetric("model_calls");
     try {
       const transport =
@@ -204,7 +204,7 @@ export class NarrativeGenerator {
         model: this.model,
         reason,
       });
-      return deterministicNarrative(input);
+      return ruleBasedNarrative(input);
     }
   }
 }

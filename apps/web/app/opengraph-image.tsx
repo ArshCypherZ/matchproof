@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const alt =
-  "Matchproof — orders left unpaid after a successful payment, found, fixed, and proven.";
+  "Matchproof: orders left unpaid after a successful payment, found, fixed, and proven.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -128,7 +128,7 @@ export default async function Image() {
             lineHeight: 1.55,
           }}
         >
-          Orders left unpaid after a successful payment — found, fixed, and
+          Orders left unpaid after a successful payment: found, fixed, and
           proven.
         </div>
       </div>

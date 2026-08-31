@@ -19,7 +19,7 @@
     "test:razorpay:e2e": "RUN_RAZORPAY_LIVE_E2E=1 node --env-file=.env node_modules/vitest/vitest.mjs run tests/razorpay-live-e2e.test.ts",
     "razorpay:webhook-server": "tsx src/incident_commander/webhook-server.ts",
     "demo": "tsx src/incident_commander/demo.ts",
-    "evaluate:baseline": "node --import tsx src/evaluation/deterministic-baseline.ts",
+    "evaluate:baseline": "node --import tsx src/evaluation/baseline.ts",
     "evaluate:full": "node --env-file=.env --import tsx src/evaluation/full-evaluation.ts",
     "db:generate": "drizzle-kit generate",
     "db:generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",

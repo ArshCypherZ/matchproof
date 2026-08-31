@@ -111,7 +111,7 @@ export const recoveryAttempts = pgTable("recovery_attempts", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
-export const afterstateObservations = pgTable("afterstate_observations", {
+export const postRepairStateObservations = pgTable("post_repair_state_observations", {
   executionKey: text("execution_key").primaryKey(),
   observation: jsonb("observation").notNull(),
 });
@@ -174,7 +174,7 @@ export const schema = {
   incidents,
   recoveries,
   recoveryAttempts,
-  afterstateObservations,
+  postRepairStateObservations,
   auditEvents,
   razorpayWebhookEvents,
   incidentProgress,

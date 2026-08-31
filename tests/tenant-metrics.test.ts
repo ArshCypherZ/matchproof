@@ -103,9 +103,9 @@ describe("tenantMetrics", () => {
       return durations[1];
     })();
 
-    await store.audit("afterstate_observed", { status: "verified" });
-    await store.audit("afterstate_observed", { status: "verified" });
-    await store.audit("afterstate_observed", { status: "held" });
+    await store.audit("post_repair_state_observed", { status: "verified" });
+    await store.audit("post_repair_state_observed", { status: "verified" });
+    await store.audit("post_repair_state_observed", { status: "held" });
     await store.audit("recovery_completed", { status: "reconciled" });
     await store.audit("recovery_completed", { status: "already_completed" });
     await store.audit("recovery_completed", { status: "reconciled" });
@@ -119,7 +119,7 @@ describe("tenantMetrics", () => {
       reconciled: 2,
       escalated: 1,
       repair_success_rate: 2 / 3,
-      afterstate_verified_share: 2 / 3,
+      post_repair_state_verified_share: 2 / 3,
       duplicates_prevented: 1,
       blocked_actions: 1,
       median_time_to_close_seconds: expectedMedian,
@@ -134,7 +134,7 @@ describe("tenantMetrics", () => {
       reconciled: 0,
       escalated: 0,
       repair_success_rate: null,
-      afterstate_verified_share: null,
+      post_repair_state_verified_share: null,
       duplicates_prevented: 0,
       blocked_actions: 0,
       median_time_to_close_seconds: null,

@@ -18,7 +18,7 @@ import {
   fetchTestModePayment,
   type RazorpayClient,
 } from "../../../../../src/incident_commander/razorpay";
-import { RazorpayProviderAfterstateAdapter } from "../../../../../src/incident_commander/afterstate-verifier";
+import { RazorpayProviderPostRepairStateAdapter } from "../../../../../src/incident_commander/post-repair-state-verifier";
 import {
   demoMerchantEvidence,
   demoWebhookBody,
@@ -282,7 +282,7 @@ export async function POST(request: Request) {
           merchantPlatformAdapter: new PostgresMerchantPlatformAdapter(
             connection.db,
           ),
-          providerAfterstateAdapter: new RazorpayProviderAfterstateAdapter(
+          providerPostRepairStateAdapter: new RazorpayProviderPostRepairStateAdapter(
             razorpay,
           ),
           diagnosisAdapter: new PlaybookDiagnosisAdapter(),
@@ -296,8 +296,8 @@ export async function POST(request: Request) {
         incident_id: bundle.incident_id,
         incident_class: result.reconciliation.incident_class,
         outcome: result.outcome.status,
-        afterstate_verification:
-          result.afterstate_verification?.status ?? "not_required",
+        post_repair_state_verification:
+          result.post_repair_state_verification?.status ?? "not_required",
         payment_state: result.payment_state.state,
         order_state: orderState?.state ?? null,
         gate_decisions: result.gate_decisions,

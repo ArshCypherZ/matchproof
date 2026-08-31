@@ -21,13 +21,13 @@ const cardColors = [
 
 const titleLabels: Record<string, string> = {
   mcp_denial: "Evidence connector denied",
-  contradictory_afterstate: "Conflicting verification result",
+  contradictory_post_repair_state: "Conflicting verification result",
 };
 
 // Eyebrows show the scenario id as a machine label; this one carries a word
 // the copy keeps out of the interface, so it reads like its title.
 const eyebrowLabels: Record<string, string> = {
-  contradictory_afterstate: "conflicting verification",
+  contradictory_post_repair_state: "conflicting verification",
 };
 
 const responseLabels: Record<string, string> = {

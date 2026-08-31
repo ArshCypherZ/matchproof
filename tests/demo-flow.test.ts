@@ -15,7 +15,7 @@ import {
 } from "../src/incident_commander/demo-flow";
 import { EvidenceGatherer } from "../src/incident_commander/evidence-gatherer";
 import { PlaybookDiagnosisAdapter } from "../src/incident_commander/playbooks";
-import { RazorpayProviderAfterstateAdapter } from "../src/incident_commander/afterstate-verifier";
+import { RazorpayProviderPostRepairStateAdapter } from "../src/incident_commander/post-repair-state-verifier";
 import type { RazorpayClient } from "../src/incident_commander/razorpay";
 import { runIncident } from "../src/incident_commander/workflow";
 
@@ -81,7 +81,7 @@ describe("publicOrderPayload", () => {
 });
 
 describe("demo staged discrepancy", () => {
-  it("classifies as paid_pending, repairs the merchant order, and verifies the afterstate offline", async () => {
+  it("classifies as paid_pending, repairs the merchant order, and verifies the post-repair state offline", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "demo-flow-"));
     const incidentStatePath = path.join(directory, "incident.sqlite");
     const merchant = createSqliteDatabase(
@@ -146,7 +146,7 @@ describe("demo staged discrepancy", () => {
         processorSecret,
         evidenceGatherer: new EvidenceGatherer({ client: fakeClient }),
         merchantPlatformAdapter: new SqliteMerchantPlatformAdapter(merchant.db),
-        providerAfterstateAdapter: new RazorpayProviderAfterstateAdapter(
+        providerPostRepairStateAdapter: new RazorpayProviderPostRepairStateAdapter(
           fakeClient,
         ),
         diagnosisAdapter: new PlaybookDiagnosisAdapter(),
@@ -159,7 +159,7 @@ describe("demo staged discrepancy", () => {
       );
       expect(repair?.allowed).toBe(true);
       expect(result.outcome.status).toBe("reconciled");
-      expect(result.afterstate_verification?.status).toBe("verified");
+      expect(result.post_repair_state_verification?.status).toBe("verified");
       expect(result.payment_state.state).toBe("paid");
       await expect(
         new SqliteMerchantPlatformAdapter(merchant.db).fetchOrderState(orderId),

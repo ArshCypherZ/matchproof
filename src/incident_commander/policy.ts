@@ -9,7 +9,7 @@ import {
   type ReconciliationResult,
 } from "../domain/schemas";
 
-export const POLICY_VERSION = "deterministic-policy-v1";
+export const POLICY_VERSION = "rule-based-policy";
 
 export type PolicyAuditLogger = (event: {
   event_type: "policy_evaluated";
@@ -102,7 +102,7 @@ export function evaluate(
         .success &&
         reconciliation?.resolution !== "reconcile_internal_state") ||
       (reconciliation !== undefined &&
-        (!reconciliation.deterministic_resolution ||
+        (!reconciliation.rule_based_resolution ||
           reconciliation.resolution !== "reconcile_internal_state" ||
           reconciliation.status === "ambiguous" ||
           !requiredInvariantsHold(reconciliation))))
@@ -117,7 +117,7 @@ export function evaluate(
       action,
       reconciliation?.status === "agreed" &&
         reconciliation.resolution === "no_action_required" &&
-        reconciliation.deterministic_resolution &&
+        reconciliation.rule_based_resolution &&
         !reconciliation.ambiguity_reasons.length &&
         requiredInvariantsHold(reconciliation),
       reconciliation?.status === "agreed"

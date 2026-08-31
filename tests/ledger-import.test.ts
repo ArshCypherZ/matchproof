@@ -148,7 +148,7 @@ describe("importLedger", () => {
       const stored = connection.db.select().from(merchantOrders).all();
       expect(stored).toHaveLength(3);
 
-      // A changed row updates the existing order instead of duplicating it.
+      // A changed row updates the existing order in place.
       const sample = rows[0];
       if (!sample) throw new Error("sample ledger row is missing");
       const changed = [{ ...sample, state: "paid" as const }];

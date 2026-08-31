@@ -24,7 +24,7 @@ export function StartBatchButton({ incidentIds }: { incidentIds: string[] }) {
             "None of the selected exceptions are accessible in this tenant. Refresh the queue and pick again.",
           );
         throw new Error(
-          "The batch could not be started. No records were changed — try again.",
+          "The batch could not be started. No records were changed. Try again.",
         );
       }
       const result = (await response.json()) as { batch_id: string };
@@ -35,7 +35,7 @@ export function StartBatchButton({ incidentIds }: { incidentIds: string[] }) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "The batch could not be started. No records were changed — try again.",
+          : "The batch could not be started. No records were changed. Try again.",
       );
       setLoading(false);
     }
@@ -58,7 +58,7 @@ export function StartBatchButton({ incidentIds }: { incidentIds: string[] }) {
       </Button>
       {empty ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          Nothing is pending — every exception is verified or escalated.
+          Nothing is pending. Every exception is verified or escalated.
         </p>
       ) : null}
       {error ? (

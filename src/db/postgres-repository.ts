@@ -3,7 +3,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import {
-  afterstateObservations,
+  postRepairStateObservations,
   auditEvents,
   incidentProgress,
   incidents,
@@ -17,12 +17,12 @@ import {
 import { createDatabase, type Database } from "./client";
 import {
   ActionSchema,
-  AfterstateObservationSchema,
+  PostRepairStateObservationSchema,
   IncidentBundleSchema,
   PaymentStateSchema,
   RecoveryOutcomeSchema,
   type PaymentState,
-  type AfterstateObservation,
+  type PostRepairStateObservation,
   type IncidentBundle,
   AuditEventSchema,
   createAuditGovernancePayload,
@@ -90,7 +90,7 @@ export class PostgresIncidentRepository implements IncidentRepository {
     await migrate(this.db, { migrationsFolder });
     if (reset) {
       await this.db.execute(
-        sql`TRUNCATE TABLE ${auditEvents}, ${afterstateObservations}, ${recoveryAttempts}, ${recoveries}, ${incidents}, ${payments}, ${razorpayWebhookEvents}, ${incidentProgress}, ${merchantOrderUpdates}, ${merchantOrders} RESTART IDENTITY`,
+        sql`TRUNCATE TABLE ${auditEvents}, ${postRepairStateObservations}, ${recoveryAttempts}, ${recoveries}, ${incidents}, ${payments}, ${razorpayWebhookEvents}, ${incidentProgress}, ${merchantOrderUpdates}, ${merchantOrders} RESTART IDENTITY`,
       );
     }
   }
@@ -336,36 +336,36 @@ export class PostgresIncidentRepository implements IncidentRepository {
         },
       });
   }
-  async saveAfterstateObservation(
+  async savePostRepairStateObservation(
     executionKey: string,
-    observation: AfterstateObservation,
+    observation: PostRepairStateObservation,
   ) {
-    const parsed = AfterstateObservationSchema.parse(observation);
+    const parsed = PostRepairStateObservationSchema.parse(observation);
     return this.db.transaction(async (tx) => {
       const inserted = await tx
-        .insert(afterstateObservations)
+        .insert(postRepairStateObservations)
         .values({ executionKey, observation: parsed })
         .onConflictDoNothing()
-        .returning({ executionKey: afterstateObservations.executionKey });
+        .returning({ executionKey: postRepairStateObservations.executionKey });
       const [row] = await tx
         .select()
-        .from(afterstateObservations)
-        .where(eq(afterstateObservations.executionKey, executionKey));
-      if (!row) throw new Error("afterstate observation was not stored");
-      const existing = AfterstateObservationSchema.parse(row.observation);
+        .from(postRepairStateObservations)
+        .where(eq(postRepairStateObservations.executionKey, executionKey));
+      if (!row) throw new Error("post-repair state observation was not stored");
+      const existing = PostRepairStateObservationSchema.parse(row.observation);
       if (JSON.stringify(existing) !== JSON.stringify(parsed))
         throw new Error(
-          "execution key was already stored with a different afterstate observation",
+          "execution key was already stored with a different post-repair state observation",
         );
       return inserted.length === 1;
     });
   }
-  async afterstateObservation(executionKey: string) {
+  async postRepairStateObservation(executionKey: string) {
     const [row] = await this.db
       .select()
-      .from(afterstateObservations)
-      .where(eq(afterstateObservations.executionKey, executionKey));
-    return row ? AfterstateObservationSchema.parse(row.observation) : undefined;
+      .from(postRepairStateObservations)
+      .where(eq(postRepairStateObservations.executionKey, executionKey));
+    return row ? PostRepairStateObservationSchema.parse(row.observation) : undefined;
   }
   async audit(type: string, payload: unknown) {
     const governancePayload = createAuditGovernancePayload(type, payload);

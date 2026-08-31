@@ -10,13 +10,11 @@ archive_dir="evaluation/archive/$run_id"
 log_file="evaluation/logs/full-evaluation-$run_id.log"
 report_file="evaluation/full-evaluation.json"
 audit_file="evaluation/full-evaluation-audit.jsonl"
-results_file="docs/RESULTS.md"
 archived_report="$archive_dir/evaluation/full-evaluation.json"
 archived_audit="$archive_dir/evaluation/full-evaluation-audit.jsonl"
-archived_results="$archive_dir/docs/RESULTS.md"
 run_succeeded=0
 
-mkdir -p -- evaluation/logs "$archive_dir/evaluation" "$archive_dir/docs"
+mkdir -p -- evaluation/logs "$archive_dir/evaluation"
 
 if [[ -f "$report_file" ]]; then
   mv -- "$report_file" "$archived_report"
@@ -24,10 +22,6 @@ fi
 
 if [[ -f "$audit_file" ]]; then
   mv -- "$audit_file" "$archived_audit"
-fi
-
-if [[ -f "$results_file" ]]; then
-  mv -- "$results_file" "$archived_results"
 fi
 
 restore_previous_results() {
@@ -41,17 +35,11 @@ restore_previous_results() {
     if [[ -f "$audit_file" ]]; then
       mv -- "$audit_file" "$archive_dir/evaluation/failed-full-evaluation-audit.jsonl"
     fi
-    if [[ -f "$results_file" ]]; then
-      mv -- "$results_file" "$archive_dir/docs/FAILED-RESULTS.md"
-    fi
     if [[ -f "$archived_report" ]]; then
       mv -- "$archived_report" "$report_file"
     fi
     if [[ -f "$archived_audit" ]]; then
       mv -- "$archived_audit" "$audit_file"
-    fi
-    if [[ -f "$archived_results" ]]; then
-      mv -- "$archived_results" "$results_file"
     fi
     printf 'Evaluation failed or was interrupted. Previous published results were restored.\n' >&2
     printf 'Inspect the run log: %s\n' "$log_file" >&2
@@ -69,13 +57,11 @@ GROQ_MODEL=qwen/qwen3.8-27b \
 
 [[ -s "$report_file" ]]
 [[ -s "$audit_file" ]]
-[[ -s "$results_file" ]]
 
 run_succeeded=1
 
 printf 'Evaluation completed successfully.\n'
 printf 'JSON report: %s\n' "$report_file"
 printf 'Raw audit JSONL: %s\n' "$audit_file"
-printf 'Markdown report: %s\n' "$results_file"
 printf 'Execution log: %s\n' "$log_file"
 printf 'Previous results archive: %s\n' "$archive_dir"

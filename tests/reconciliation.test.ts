@@ -41,7 +41,7 @@ const resignWebhooks = (bundle: IncidentBundle) => {
   return bundle;
 };
 
-describe("deterministic reconciliation", () => {
+describe("rule-based reconciliation", () => {
   it("compares exact provider and merchant invariants", () => {
     const result = reconcile(load("timeout_after_mutation"));
     expect(result).toMatchObject({
@@ -49,7 +49,7 @@ describe("deterministic reconciliation", () => {
       provider_state: "captured_verified",
       merchant_state: "pending",
       resolution: "reconcile_internal_state",
-      deterministic_resolution: true,
+      rule_based_resolution: true,
     });
     expect(result.invariant_results).toMatchObject({
       identity: true,
@@ -74,7 +74,7 @@ describe("deterministic reconciliation", () => {
     ["timeout_after_mutation", "capture_timeout", "reconcile_internal_state"],
     ["settlement_exception", "settlement_exception", "escalate"],
   ] as const)(
-    "covers %s deterministically",
+    "covers %s by rule",
     (fixture, incidentClass, resolution) => {
       const result = reconcile(load(fixture));
       expect(result.incident_class).toBe(incidentClass);

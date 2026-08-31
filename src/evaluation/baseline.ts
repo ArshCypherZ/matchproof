@@ -4,7 +4,7 @@ import path from "node:path";
 import { runIncident } from "../incident_commander/workflow";
 import { EVALUATION_DATASET, type EvaluationRecord } from "./dataset";
 import {
-  afterstateVerificationCoverage,
+  postRepairStateVerificationCoverage,
   applyInvestigationEvidence,
   fixtureMerchant,
   fixtureProvider,
@@ -12,7 +12,7 @@ import {
   materializeEvaluationFixture,
 } from "./full-evaluation";
 
-export type DeterministicBaselineReport = {
+export type BaselineReport = {
   generated_at: string;
   mode: "fixture";
   record_count: number;
@@ -27,7 +27,7 @@ export type DeterministicBaselineReport = {
     runbook_count: number;
     no_action_count: number;
     ambiguous_count: number;
-    afterstate_verification_coverage: number;
+    post_repair_state_verification_coverage: number;
     duplicate_action_prevention_count: number;
     enforced_unsafe_recommendation_count: number;
     unsafe_side_effect_count: number;
@@ -40,7 +40,7 @@ export type DeterministicBaselineReport = {
     resolution: string;
     expected_match: EvaluationRecord["expected_match"];
     actual_match: EvaluationRecord["expected_match"];
-    afterstate_verified: boolean;
+    post_repair_state_verified: boolean;
   }>;
 };
 
@@ -53,11 +53,11 @@ const isUnsafe = (action: string) =>
     "arbitrary_write",
     "retry_capture",
   ].some((value) => action.includes(value));
-export async function runDeterministicBaseline(
+export async function runBaseline(
   dataset: readonly EvaluationRecord[] = EVALUATION_DATASET,
-): Promise<DeterministicBaselineReport> {
+): Promise<BaselineReport> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "app-baseline-"));
-  const rows: DeterministicBaselineReport["records"] = [];
+  const rows: BaselineReport["records"] = [];
   let automatic = 0;
   let runbook = 0;
   let noAction = 0;
@@ -96,7 +96,7 @@ export async function runDeterministicBaseline(
             ...(merchant
               ? {
                   merchantPlatformAdapter: merchant.adapter,
-                  providerAfterstateAdapter: fixtureProvider(fixture, record),
+                  providerPostRepairStateAdapter: fixtureProvider(fixture, record),
                   ...(record.investigation_gateway
                     ? {
                         mcpGateway: investigationGateway(fixture, record),
@@ -132,8 +132,8 @@ export async function runDeterministicBaseline(
                   invariants.uniqueness
                 ? "matched"
                 : "unmatched";
-        const afterstateVerified =
-          result.afterstate_verification?.status === "verified";
+        const postRepairStateVerified =
+          result.post_repair_state_verification?.status === "verified";
         const action = result.diagnosis.recommendation.action;
         if (isUnsafe(action)) unsafeRecommendations += 1;
         if (
@@ -147,7 +147,7 @@ export async function runDeterministicBaseline(
         if (
           terminalSuccess &&
           result.outcome.action === "reconcile_internal_state" &&
-          afterstateVerified
+          postRepairStateVerified
         )
           runbook += 1;
         else if (
@@ -185,7 +185,7 @@ export async function runDeterministicBaseline(
           resolution: result.reconciliation.resolution,
           expected_match: record.expected_match,
           actual_match: actualMatch,
-          afterstate_verified: afterstateVerified,
+          post_repair_state_verified: postRepairStateVerified,
         });
       } finally {
         merchant?.close();
@@ -239,7 +239,7 @@ export async function runDeterministicBaseline(
       runbook_count: runbook,
       no_action_count: noAction,
       ambiguous_count: ambiguous,
-      afterstate_verification_coverage: afterstateVerificationCoverage(rows),
+      post_repair_state_verification_coverage: postRepairStateVerificationCoverage(rows),
       duplicate_action_prevention_count: duplicatePrevention,
       enforced_unsafe_recommendation_count: unsafeRecommendations,
       unsafe_side_effect_count: unsafeSideEffects,
@@ -248,16 +248,16 @@ export async function runDeterministicBaseline(
   };
 }
 
-export async function writeDeterministicBaseline(
-  output = path.resolve("evaluation/deterministic-baseline.json"),
+export async function writeBaseline(
+  output = path.resolve("evaluation/baseline.json"),
 ) {
-  const report = await runDeterministicBaseline();
+  const report = await runBaseline();
   await fs.mkdir(path.dirname(output), { recursive: true });
   await fs.writeFile(output, `${JSON.stringify(report, null, 2)}\n`);
   return report;
 }
 
-if (process.argv[1]?.endsWith("deterministic-baseline.ts"))
-  writeDeterministicBaseline().then((report) =>
+if (process.argv[1]?.endsWith("baseline.ts"))
+  writeBaseline().then((report) =>
     console.log(JSON.stringify(report.metrics, null, 2)),
   );

@@ -34,7 +34,7 @@ function importError(payload: { error?: string; max_rows?: number }) {
     case "expected_multipart_upload":
       return "The upload was malformed. Choose the file again and retry.";
     default:
-      return "The import did not complete. No orders were changed — try again.";
+      return "The import did not complete. No orders were changed. Try again.";
   }
 }
 
@@ -59,7 +59,7 @@ export function LedgerImportForm() {
     if (file.size > MAX_UPLOAD_BYTES) {
       setState({
         kind: "failed",
-        reason: `That file is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Imports are limited to 5 MB — split it into smaller files.`,
+        reason: `That file is ${(file.size / (1024 * 1024)).toFixed(1)} MB. Imports are limited to 5 MB. Split it into smaller files.`,
       });
       inputRef.current?.focus();
       return;
@@ -92,7 +92,7 @@ export function LedgerImportForm() {
         reason:
           error instanceof Error
             ? error.message
-            : `The import did not complete. No orders were changed — try again.`,
+            : `The import did not complete. No orders were changed. Try again.`,
       });
     }
   };
@@ -180,7 +180,7 @@ export function LedgerImportForm() {
                   ? "row was rejected"
                   : "rows were rejected"}
                 {state.result.rejected.length > MAX_REJECTED_SHOWN
-                  ? ` — first ${MAX_REJECTED_SHOWN} shown`
+                  ? ` (first ${MAX_REJECTED_SHOWN} shown)`
                   : ""}
                 .
               </p>

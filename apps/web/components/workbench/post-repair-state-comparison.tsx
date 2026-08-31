@@ -24,7 +24,7 @@ function ResultTag({ holds }: { holds: boolean }) {
   );
 }
 
-export function AfterstateComparison({
+export function PostRepairStateComparison({
   reconciliation,
   verified,
 }: {

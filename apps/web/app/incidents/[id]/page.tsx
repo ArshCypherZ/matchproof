@@ -20,7 +20,7 @@ import { LoopRail } from "@/components/workbench/loop-rail";
 import { EvidenceTimeline } from "@/components/workbench/evidence-timeline";
 import { JudgmentPanel } from "@/components/workbench/judgment-panel";
 import { PolicyDecision } from "@/components/workbench/policy-decision";
-import { AfterstateComparison } from "@/components/workbench/afterstate-comparison";
+import { PostRepairStateComparison } from "@/components/workbench/post-repair-state-comparison";
 import { IncidentActions } from "@/components/workbench/incident-actions";
 import { WorkbenchSections } from "@/components/workbench/workbench-sections";
 import { SectionRail } from "@/components/workbench/section-rail";
@@ -172,7 +172,7 @@ export default async function IncidentPage({
                 reconciliation={incident.reconciliation}
                 idempotencyKey={incident.idempotency_key}
               />
-              <AfterstateComparison
+              <PostRepairStateComparison
                 reconciliation={incident.reconciliation}
                 verified={verified}
               />

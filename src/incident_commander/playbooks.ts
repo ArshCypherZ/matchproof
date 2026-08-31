@@ -17,10 +17,10 @@ export type PlaybookReadTool =
 
 /**
  * Tier 0: incident classes whose residual evidence gap has one known
- * deterministic read. `capture_timeout` needs a fresh provider payment fetch
+ * rule-based read. `capture_timeout` needs a fresh provider payment fetch
  * to learn the outcome of the timed-out capture; `late_authorized` needs one
  * to learn the current authorization state and the order the payment belongs
- * to. Every other class either resolves deterministically from the signed
+ * to. Every other class either resolves by rule from the signed
  * evidence already in the bundle or is a Tier 1 residual.
  */
 export const TIER0_READ_PLANS: Readonly<
@@ -108,12 +108,12 @@ export const tier0Applies = (
     reconciliation.provider_order_id ??
     reconciliation.merchant_order_ids[0],
   );
-  const deterministicClosure =
-    reconciliation.deterministic_resolution &&
+  const ruleBasedClosure =
+    reconciliation.rule_based_resolution &&
     (reconciliation.resolution !== "reconcile_internal_state" ||
       orderIdentityEstablished);
   return (
-    deterministicClosure ||
+    ruleBasedClosure ||
     TIER0_READ_PLANS[reconstruction.incident_class] !== undefined
   );
 };
@@ -144,7 +144,7 @@ const attemptedReads = (history: readonly InvestigationTraceEntry[]) =>
 
 /**
  * Tier 0 diagnosis adapter: closes every incident whose class has a known
- * deterministic path without any model call. When constructed with a cluster
+ * rule-based path without any model call. When constructed with a cluster
  * `readPlan` and `advisory` it replays a Tier 1 cluster investigation for the
  * remaining members of a residual cluster, re-citing member-canonical evidence.
  */
@@ -161,7 +161,7 @@ export class PlaybookDiagnosisAdapter implements InvestigationDiagnosisAdapter {
     this.availableReadTools = options.availableReadTools ?? DEFAULT_READ_TOOLS;
     this.provider = options.advisory
       ? "cluster-replay"
-      : "deterministic-playbook";
+      : "rule-based-playbook";
     this.model = options.advisory ? "cluster-replay-v1" : "tier0-playbook-v1";
   }
 
@@ -182,7 +182,7 @@ export class PlaybookDiagnosisAdapter implements InvestigationDiagnosisAdapter {
       reconciliation.merchant_order_ids[0],
     );
     const closing =
-      reconciliation.deterministic_resolution &&
+      reconciliation.rule_based_resolution &&
       reconciliation.resolution !== "escalate" &&
       (reconciliation.resolution !== "reconcile_internal_state" ||
         orderIdentityEstablished);
@@ -201,20 +201,20 @@ export class PlaybookDiagnosisAdapter implements InvestigationDiagnosisAdapter {
       advisory?.missing_fact ??
       MISSING_FACT[reconstruction.incident_class] ??
       (reconciliation.ambiguity_reasons.join(", ") ||
-        "No additional deterministic fact is required.");
+        "No additional rule-based fact is required.");
     const rationale =
       advisory?.rationale ??
       (closing
         ? reconciliation.resolution
         : action === "escalate"
-          ? "No deterministic playbook closes this incident; it is a Tier 1 residual."
-          : "The incident class has a known deterministic evidence read.");
+          ? "No rule-based playbook closes this incident; it is a Tier 1 residual."
+          : "The incident class has a known rule-based evidence read.");
     const narrative = {
       hypothesis:
         advisory?.hypothesis ??
         (closing
-          ? "Deterministic reconciliation already resolves this incident."
-          : `The ${reconstruction.incident_class} evidence gap has a known deterministic read.`),
+          ? "Rule-based reconciliation already resolves this incident."
+          : `The ${reconstruction.incident_class} evidence gap has a known rule-based read.`),
       missing_fact: missingFact || "No additional fact is required.",
       expected_fact:
         advisory?.expected_fact ??
@@ -224,16 +224,16 @@ export class PlaybookDiagnosisAdapter implements InvestigationDiagnosisAdapter {
       uncertainty:
         advisory?.uncertainty ??
         (closing
-          ? "Deterministic invariants are complete for this repair."
+          ? "Rule-based invariants are complete for this repair."
           : "Escalate when the bounded read does not resolve the residual."),
       confidence: advisory?.confidence ?? 1,
       stopping_condition:
         advisory?.stopping_condition ??
-        "Stop when deterministic invariants verify closure or escalation is assigned.",
+        "Stop when rule-based invariants verify closure or escalation is assigned.",
       operator_summary:
         advisory?.operator_summary ??
         (closing
-          ? `Closed by the ${reconstruction.incident_class} deterministic playbook.`
+          ? `Closed by the ${reconstruction.incident_class} rule-based playbook.`
           : `${reconstruction.incident_class} remains a Tier 1 residual.`),
       terminal_owner:
         advisory?.terminal_owner ??
@@ -315,7 +315,7 @@ export class PlaybookDiagnosisAdapter implements InvestigationDiagnosisAdapter {
 
 /**
  * Live-mode default: run the Tier 0 playbook first and delegate only true
- * residuals (no deterministic path for the class) to the model adapter.
+ * residuals (no rule-based path for the class) to the model adapter.
  */
 export class TieredDiagnosisAdapter implements InvestigationDiagnosisAdapter {
   readonly provider: string;

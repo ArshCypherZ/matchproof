@@ -232,7 +232,7 @@ export class RazorpayWebhookInbox {
     const bundle = await this.store.incident(result.incidentId);
     const payment = await this.store.payment(paymentId);
     if (!bundle || !payment)
-      throw new Error("late webhook afterstate could not be loaded");
+      throw new Error("late webhook post-repair state could not be loaded");
     const reconstruction = reconstruct(bundle);
     const closureInvariant =
       VerifiedPaymentStateSchema.safeParse(reconstruction.current_state)

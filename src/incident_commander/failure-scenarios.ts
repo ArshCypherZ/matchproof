@@ -58,14 +58,14 @@ export const FAILURE_SCENARIOS = [
     title: "Merchant acknowledgement loss",
     step: "execute",
     response: "verify_state",
-    outcome: "Hold execution and verify afterstate without another write.",
+    outcome: "Hold execution and verify post-repair state without another write.",
   },
   {
     id: "model_failure",
     title: "Model failure",
     step: "diagnose",
     response: "switch_evidence_source",
-    outcome: "Use the deterministic diagnosis and retain failure provenance.",
+    outcome: "Use the rule-based diagnosis and retain failure provenance.",
   },
   {
     id: "research_failure",
@@ -76,8 +76,8 @@ export const FAILURE_SCENARIOS = [
       "Continue with cited available evidence and record the research gap.",
   },
   {
-    id: "contradictory_afterstate",
-    title: "Contradictory afterstate",
+    id: "contradictory_post_repair_state",
+    title: "Contradictory post-repair state",
     step: "verify",
     response: "escalate",
     outcome: "Keep closure open and escalate the conflicting observations.",

@@ -7,7 +7,7 @@ export type TenantMetrics = {
   reconciled: number;
   escalated: number;
   repair_success_rate: number | null;
-  afterstate_verified_share: number | null;
+  post_repair_state_verified_share: number | null;
   duplicates_prevented: number;
   blocked_actions: number;
   median_time_to_close_seconds: number | null;
@@ -113,12 +113,12 @@ export async function tenantMetrics(
     (record) =>
       (record.payload as { tenant_id?: unknown }).tenant_id === tenantId,
   );
-  const afterstateObservations = audits.filter(
-    (record) => record.event_type === "afterstate_observed",
+  const postRepairStateObservations = audits.filter(
+    (record) => record.event_type === "post_repair_state_observed",
   ).length;
-  const afterstateVerified = audits.filter(
+  const postRepairStateVerified = audits.filter(
     (record) =>
-      record.event_type === "afterstate_observed" &&
+      record.event_type === "post_repair_state_observed" &&
       detailsOf(record).status === "verified",
   ).length;
   const terminalRepairs = counts.reconciled + counts.escalated;
@@ -129,9 +129,9 @@ export async function tenantMetrics(
     escalated: counts.escalated,
     repair_success_rate:
       terminalRepairs > 0 ? counts.reconciled / terminalRepairs : null,
-    afterstate_verified_share:
-      afterstateObservations > 0
-        ? afterstateVerified / afterstateObservations
+    post_repair_state_verified_share:
+      postRepairStateObservations > 0
+        ? postRepairStateVerified / postRepairStateObservations
         : null,
     duplicates_prevented: audits.filter(
       (record) =>

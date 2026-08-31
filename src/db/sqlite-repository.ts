@@ -3,7 +3,7 @@ import { desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { createSqliteDatabase, type SqliteDatabase } from "./sqlite-client";
 import {
-  afterstateObservations,
+  postRepairStateObservations,
   auditEvents,
   incidentProgress,
   incidents,
@@ -14,11 +14,11 @@ import {
 } from "./sqlite-schema";
 import {
   ActionSchema,
-  AfterstateObservationSchema,
+  PostRepairStateObservationSchema,
   IncidentBundleSchema,
   PaymentStateSchema,
   type PaymentState,
-  type AfterstateObservation,
+  type PostRepairStateObservation,
   RecoveryOutcomeSchema,
   type IncidentBundle,
   AuditEventSchema,
@@ -87,7 +87,7 @@ export class SqliteIncidentRepository implements IncidentRepository {
     });
     if (reset)
       this.connection.client.exec(
-        "DELETE FROM audit_events; DELETE FROM afterstate_observations; DELETE FROM recovery_attempts; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress; DELETE FROM merchant_order_updates; DELETE FROM merchant_orders;",
+        "DELETE FROM audit_events; DELETE FROM post_repair_state_observations; DELETE FROM recovery_attempts; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress; DELETE FROM merchant_order_updates; DELETE FROM merchant_orders;",
       );
   }
   async close() {
@@ -341,41 +341,41 @@ export class SqliteIncidentRepository implements IncidentRepository {
       })
       .run();
   }
-  async saveAfterstateObservation(
+  async savePostRepairStateObservation(
     executionKey: string,
-    observation: AfterstateObservation,
+    observation: PostRepairStateObservation,
   ) {
-    const parsed = AfterstateObservationSchema.parse(observation);
+    const parsed = PostRepairStateObservationSchema.parse(observation);
     return this.connection.client.transaction(() => {
       const inserted = this.db
-        .insert(afterstateObservations)
+        .insert(postRepairStateObservations)
         .values({ executionKey, observation: JSON.stringify(parsed) })
         .onConflictDoNothing()
         .run();
       const [row] = this.db
         .select()
-        .from(afterstateObservations)
-        .where(eq(afterstateObservations.executionKey, executionKey))
+        .from(postRepairStateObservations)
+        .where(eq(postRepairStateObservations.executionKey, executionKey))
         .all();
-      if (!row) throw new Error("afterstate observation was not stored");
-      const existing = AfterstateObservationSchema.parse(
+      if (!row) throw new Error("post-repair state observation was not stored");
+      const existing = PostRepairStateObservationSchema.parse(
         JSON.parse(row.observation),
       );
       if (JSON.stringify(existing) !== JSON.stringify(parsed))
         throw new Error(
-          "execution key was already stored with a different afterstate observation",
+          "execution key was already stored with a different post-repair state observation",
         );
       return inserted.changes === 1;
     })();
   }
-  async afterstateObservation(executionKey: string) {
+  async postRepairStateObservation(executionKey: string) {
     const [row] = this.db
       .select()
-      .from(afterstateObservations)
-      .where(eq(afterstateObservations.executionKey, executionKey))
+      .from(postRepairStateObservations)
+      .where(eq(postRepairStateObservations.executionKey, executionKey))
       .all();
     return row
-      ? AfterstateObservationSchema.parse(JSON.parse(row.observation))
+      ? PostRepairStateObservationSchema.parse(JSON.parse(row.observation))
       : undefined;
   }
   async audit(type: string, payload: unknown) {

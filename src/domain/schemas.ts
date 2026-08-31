@@ -676,7 +676,7 @@ export const ReconciliationResultSchema = z
     discrepancies: z.array(ReconciliationDiscrepancySchema),
     invariant_results: ReconciliationInvariantResultsSchema,
     ambiguity_reasons: z.array(z.string().min(1)),
-    deterministic_resolution: z.boolean(),
+    rule_based_resolution: z.boolean(),
     resolution: ReconciliationResolutionSchema,
     target_order_id: identifier("order").nullable(),
     target_state: z.literal("paid").nullable(),
@@ -729,7 +729,7 @@ export const MissingFactCodeSchema = z.enum([
   "webhook_delivery_status",
   "callback_delivery_status",
   "settlement_status",
-  "afterstate_verification",
+  "post_repair_state_verification",
   "none",
 ]);
 export type MissingFactCode = z.infer<typeof MissingFactCodeSchema>;
@@ -884,7 +884,7 @@ export const RecoveryOutcomeSchema = z
     }
   });
 
-export const ProviderAfterstateSchema = z.discriminatedUnion("kind", [
+export const ProviderPostRepairStateSchema = z.discriminatedUnion("kind", [
   z
     .object({ kind: z.literal("payment"), object: RazorpayPaymentSchema })
     .strict(),
@@ -903,9 +903,9 @@ export const MerchantRecordSchema = z
     currency: currency.optional(),
   })
   .strict();
-export const AfterstateObservationSchema = z
+export const PostRepairStateObservationSchema = z
   .object({
-    provider_object: ProviderAfterstateSchema,
+    provider_object: ProviderPostRepairStateSchema,
     merchant_record: MerchantRecordSchema,
     invariant_holds: z.boolean(),
     observed_at: timestamp,
@@ -923,7 +923,7 @@ export const AuditGovernancePayloadSchema = z
     proposed_action: z.string().min(1),
     approval_state: z.string().min(1),
     attempt_result: z.string().min(1),
-    afterstate: jsonValue,
+    post_repair_state: jsonValue,
     stopping_reason: z.string().min(1),
     terminal_owner: z.string().min(1),
     incident_id: z.string().min(1).optional(),
@@ -1008,8 +1008,8 @@ export function createAuditGovernancePayload(
         : typeof record.status === "string"
           ? record.status
           : eventType,
-    afterstate:
-      record.afterstate ??
+    post_repair_state:
+      record.post_repair_state ??
       ("after_state" in record ? record.after_state : null),
     stopping_reason:
       typeof record.stopping_reason === "string"
@@ -1038,4 +1038,4 @@ export type RazorpayPaymentCollection = z.infer<
 >;
 export type PolicyGateDecision = z.infer<typeof PolicyGateDecisionSchema>;
 export type RecoveryOutcome = z.infer<typeof RecoveryOutcomeSchema>;
-export type AfterstateObservation = z.infer<typeof AfterstateObservationSchema>;
+export type PostRepairStateObservation = z.infer<typeof PostRepairStateObservationSchema>;

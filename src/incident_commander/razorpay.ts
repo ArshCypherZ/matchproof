@@ -135,7 +135,7 @@ export async function fetchTestModeOrder(
   );
 }
 
-/** Fetch the fields used for deterministic order reconciliation. */
+/** Fetch the fields used for rule-based order reconciliation. */
 export async function fetchTestModeOrderStatus(
   orderId: string,
   client?: RazorpayClient,
@@ -174,7 +174,7 @@ export async function fetchTestModePayment(
   );
 }
 
-/** Fetch the fields used for deterministic payment/order reconciliation. */
+/** Fetch the fields used for rule-based payment/order reconciliation. */
 export async function fetchTestModePaymentStatus(
   paymentId: string,
   client?: RazorpayClient,

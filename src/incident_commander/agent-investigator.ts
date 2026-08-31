@@ -190,7 +190,7 @@ const fallbackOutput = (
       },
     },
     provenance: {
-      provider: "deterministic-investigation-fallback",
+      provider: "rule-based-investigation-fallback",
       requested_model: "none",
       returned_model: "none",
       request_id: `investigation-fallback:${context.bundle.incident_id}`,
@@ -327,7 +327,7 @@ export class AgentInvestigator {
       }
       if (
         observationAdvanced &&
-        context.reconciliation.deterministic_resolution &&
+        context.reconciliation.rule_based_resolution &&
         output.diagnosis.recommendation.action ===
           context.reconciliation.resolution
       ) {

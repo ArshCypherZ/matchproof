@@ -16,7 +16,7 @@ export const LedgerRowSchema = z.object({
   payment_id: optionalCell(z.string().trim().min(1).max(128).optional()),
   state: z.enum(["pending", "paid"]),
   // Capped at the Postgres integer column bound so one oversized row is
-  // rejected per-row instead of aborting the whole import.
+  // rejected per-row; a bad row does not abort the whole import.
   amount_minor: z.coerce.number().int().positive().max(2_147_483_647),
   currency: z
     .string()

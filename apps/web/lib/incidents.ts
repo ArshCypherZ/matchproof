@@ -100,8 +100,8 @@ function currentProgress(
   );
 }
 
-// Builds DTOs for a whole list of bundles with two queries (progress +
-// payments) instead of two per incident.
+// Builds DTOs for a whole list of bundles with two queries total (progress +
+// payments), not two per incident.
 export async function incidentDtosForBundles(
   store: IncidentStore,
   bundles: IncidentBundle[],
@@ -138,7 +138,7 @@ export async function listIncidentDtos(tenantId: string) {
 }
 
 // A change token over the same store rows the DTOs read. Live refresh polls
-// this token instead of pulling every record with its evidence on each
+// this token and avoids pulling every record with its evidence on each
 // tick; when the digest moves, the client refetches the page.
 export async function incidentListFingerprint(tenantId: string) {
   return withStore(tenantId, async (store) => {

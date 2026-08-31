@@ -82,9 +82,9 @@ export default async function MetricsPage() {
             />
             <MetricBand
               value={
-                measured.afterstate_verified_share === null
+                measured.post_repair_state_verified_share === null
                   ? "No repairs yet"
-                  : percent(measured.afterstate_verified_share)
+                  : percent(measured.post_repair_state_verified_share)
               }
               label="Post-action verification"
               tone="safe"
@@ -164,7 +164,7 @@ export default async function MetricsPage() {
                 value={metrics.incident_classification_macro_f1.toFixed(2)}
                 label="Balanced accuracy across exception types"
                 tone="safe"
-                note="Macro F1 — every exception type weighed equally."
+                note="Macro F1. Every exception type weighed equally."
               />
             </div>
           </section>
@@ -195,7 +195,7 @@ export default async function MetricsPage() {
             </div>
             <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
               <MetricBand
-                value={percent(metrics.afterstate_verification_coverage)}
+                value={percent(metrics.post_repair_state_verification_coverage)}
                 label="Post-action checks completed"
                 tone="warning"
               />

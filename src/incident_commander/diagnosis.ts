@@ -72,7 +72,7 @@ const providerModel = () => process.env.GROQ_MODEL ?? "qwen/qwen3.8-27b";
 
 /**
  * The single model output contract: a compact advisory. The model perceives
- * evidence and names the missing fact and the next safe read; deterministic
+ * evidence and names the missing fact and the next safe read; rule-based
  * reconciliation owns every state interpretation and the policy gate owns
  * every action decision.
  */
@@ -248,7 +248,7 @@ const inspectRawAdvisory = (
  */
 const READ_TOOL_CONTRACT = {
   fetch_payment:
-    "Establishes provider payment status, captured flag, amount, currency, and order linkage. Use for provider_payment_state and afterstate_verification facts.",
+    "Establishes provider payment status, captured flag, amount, currency, and order linkage. Use for provider_payment_state and post_repair_state_verification facts.",
   fetch_order:
     "Establishes provider order status and amount paid. Use for webhook_delivery_status and callback_delivery_status facts.",
   search_events:
@@ -265,7 +265,7 @@ const buildPrompt = (
   history: readonly InvestigationTraceEntry[],
 ) =>
   JSON.stringify({
-    task: "Investigate the deterministic residual in this payment-to-order exception. Return one JSON advisory naming the missing fact and the next safe read.",
+    task: "Investigate the rule-based residual in this payment-to-order exception. Return one JSON advisory naming the missing fact and the next safe read.",
     incident_class: context.reconstruction.incident_class,
     read_tool_contract: READ_TOOL_CONTRACT,
     available_read_tools: availableReadTools,
@@ -297,7 +297,7 @@ const buildPrompt = (
       hypothesis: "one concise hypothesis",
       missing_fact: "specific missing or conflicting fact",
       missing_fact_codes:
-        "one or more of merchant_order_state | merchant_order_identity | provider_payment_state | webhook_delivery_status | callback_delivery_status | settlement_status | afterstate_verification | none",
+        "one or more of merchant_order_state | merchant_order_identity | provider_payment_state | webhook_delivery_status | callback_delivery_status | settlement_status | post_repair_state_verification | none",
       next_safe_read:
         "fetch_payment | fetch_order | search_events | fetch_merchant_order | none",
       expected_fact: "fact the read must establish",
@@ -369,7 +369,7 @@ const advisoryAction = (
   compact: z.infer<typeof CompactAdvisorySchema>,
   context: DiagnosisContext,
 ) => {
-  if (context.reconciliation.deterministic_resolution)
+  if (context.reconciliation.rule_based_resolution)
     return context.reconciliation.resolution === "no_action_required"
       ? "no_action_required"
       : "reconcile_internal_state";
@@ -451,7 +451,7 @@ const fallbackDiagnosis = (
   }
   if (!evidenceIds.length)
     throw new Error("diagnosis requires canonical evidence");
-  const action = context.reconciliation.deterministic_resolution
+  const action = context.reconciliation.rule_based_resolution
     ? context.reconciliation.resolution === "no_action_required"
       ? "no_action_required"
       : "reconcile_internal_state"
@@ -462,10 +462,10 @@ const fallbackDiagnosis = (
         {
           rank: 1,
           summary:
-            "The deterministic reconciliation result is the safe fallback diagnosis.",
+            "The rule-based reconciliation result is the safe fallback diagnosis.",
           reasoning: context.reconciliation.discrepancies.join(", ") || reason,
           uncertainty: reason,
-          confidence: context.reconciliation.deterministic_resolution ? 1 : 0,
+          confidence: context.reconciliation.rule_based_resolution ? 1 : 0,
           evidence_ids: evidenceIds,
         },
       ],
@@ -480,7 +480,7 @@ const fallbackDiagnosis = (
           context.reconciliation.ambiguity_reasons.join(", ") || reason,
         next_safe_read: {
           tool: "none",
-          reason: "The deterministic fallback cannot select an external read.",
+          reason: "The rule-based fallback cannot select an external read.",
           expected_fact: "No additional fact is asserted by the fallback.",
           evidence_ids: evidenceIds,
         },
@@ -488,7 +488,7 @@ const fallbackDiagnosis = (
           name: runbookForAction(action),
           rationale: context.reconciliation.resolution,
           stopping_condition:
-            "Stop when deterministic invariants verify closure or assign the exception to payment operations.",
+            "Stop when rule-based invariants verify closure or assign the exception to payment operations.",
         },
         operator_packet: {
           summary: context.reconciliation.discrepancies.join(", ") || reason,
@@ -503,7 +503,7 @@ const fallbackDiagnosis = (
       },
     },
     provenance: {
-      provider: "deterministic-fallback",
+      provider: "rule-based-fallback",
       requested_model: "none",
       returned_model: "none",
       request_id: `fallback:${context.bundle.incident_id}`,
@@ -769,7 +769,7 @@ export class FixtureDiagnosisAdapter {
           action: "reconcile_internal_state",
           reasoning:
             "Apply the verified capture to the merchant record without mutation.",
-          uncertainty: "Escalate if deterministic invariants do not agree.",
+          uncertainty: "Escalate if rule-based invariants do not agree.",
           evidence_ids: evidenceIds.length
             ? evidenceIds.slice(-2)
             : [fallbackEvidence],
@@ -779,7 +779,7 @@ export class FixtureDiagnosisAdapter {
             "Whether the merchant acknowledgement was lost after provider capture.",
           next_safe_read: {
             tool: "fetch_merchant_order",
-            reason: "Confirm the merchant order afterstate before closure.",
+            reason: "Confirm the merchant order post-repair state before closure.",
             expected_fact:
               "The merchant order is paid and linked to the captured payment.",
             evidence_ids: evidenceIds.length ? evidenceIds : [fallbackEvidence],
@@ -789,7 +789,7 @@ export class FixtureDiagnosisAdapter {
             rationale:
               "Verified provider capture can support a bounded merchant-state repair.",
             stopping_condition:
-              "Provider and merchant afterstates agree or the incident is escalated.",
+              "Provider and merchant post-repair states agree or the incident is escalated.",
           },
           operator_packet: {
             summary:

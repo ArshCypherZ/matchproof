@@ -157,7 +157,7 @@ describe("live AI bakeoff", () => {
         model: "test-model",
         diagnose(_bundle, reconstruction, reconciliation) {
           return validOutput(reconstruction, reconciliation, {
-            provider: "deterministic-fallback",
+            provider: "rule-based-fallback",
             failureReason: "Gemini 429: quota exhausted",
           });
         },

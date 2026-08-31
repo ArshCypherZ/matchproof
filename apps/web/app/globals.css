@@ -82,7 +82,7 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  /* Printed panels (the failure-scenario cards): 22px, per DESIGN.md. */
+  /* Printed panels (the failure-scenario cards): 22px. */
   --radius-panel: 1.375rem;
 }
 
@@ -116,13 +116,13 @@
   --surface-subtle: #eee8dd;
   --ink-secondary: #625f59;
   /* Kept at/above 4.5:1 on card, surface, and surface-subtle: it carries
-     small label text (loop-rail steps), not just hairline decoration. */
+     small label text (loop-rail steps), not hairline decoration alone. */
   --ink-tertiary: #666158;
   --hairline: #cec7ba;
   --provider: #4f70ee;
   --provider-soft: #c9dcff;
   /* Warning text sits on warning-soft chips (judgment panel), so it
-     clears 4.5:1 against #f3dfc4, not just the page canvas. */
+     clears 4.5:1 against #f3dfc4, not merely the page canvas. */
   --warning: #824c0b;
   --warning-soft: #f3dfc4;
   --selection: #ffb0a5;

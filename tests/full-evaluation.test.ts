@@ -12,7 +12,7 @@ import type {
 } from "../src/domain/schemas";
 
 describe("full evaluation", () => {
-  it("compares deterministic and AI modes on a reproducible held-out split", async () => {
+  it("compares baseline and AI modes on a reproducible held-out split", async () => {
     let aiCalls = 0;
     const report = await runFullEvaluation(EVALUATION_DATASET, {
       aiDiagnosisAdapter: {
@@ -39,15 +39,15 @@ describe("full evaluation", () => {
             webhook_delivery_failure: ["webhook_delivery_status"],
             late_authorized: [
               "provider_payment_state",
-              "afterstate_verification",
+              "post_repair_state_verification",
             ],
             capture_timeout: [
               "provider_payment_state",
-              "afterstate_verification",
+              "post_repair_state_verification",
             ],
             settlement_exception: ["settlement_status"],
           }[reconstruction.incident_class];
-          const action = reconciliation.deterministic_resolution
+          const action = reconciliation.rule_based_resolution
             ? reconciliation.resolution === "no_action_required"
               ? "no_action_required"
               : "reconcile_internal_state"
@@ -59,10 +59,10 @@ describe("full evaluation", () => {
                   rank: 1,
                   summary: missingFacts.length
                     ? `Missing or conflicting fact: ${missingFacts.join("; ")}`
-                    : "Canonical evidence supports the deterministic result.",
+                    : "Canonical evidence supports the rule-based result.",
                   reasoning: missingFacts.length
                     ? `A safe read should resolve: ${missingFacts.join("; ")}`
-                    : "The deterministic invariants are complete.",
+                    : "The rule-based invariants are complete.",
                   uncertainty:
                     "Live model quality is measured by the CLI evaluation.",
                   confidence: 1,
@@ -73,7 +73,7 @@ describe("full evaluation", () => {
                 action,
                 reasoning: missingFacts.length
                   ? `Retry a read for: ${missingFacts.join("; ")}`
-                  : "Follow the deterministic resolution.",
+                  : "Follow the rule-based resolution.",
                 uncertainty: "This is an offline test adapter.",
                 evidence_ids: evidenceIds,
               },
@@ -128,19 +128,19 @@ describe("full evaluation", () => {
     expect(report.dataset_size).toBe(120);
     expect(report.train_size).toBe(20);
     expect(report.held_out_size).toBe(100);
-    expect(Object.keys(report.modes)).toEqual(["deterministic", "ai"]);
+    expect(Object.keys(report.modes)).toEqual(["baseline", "ai"]);
     expect(report.comparison.length).toBeGreaterThan(10);
     expect(
-      report.modes.deterministic.metrics.enforced_unsafe_recommendation_count,
+      report.modes.baseline.metrics.enforced_unsafe_recommendation_count,
     ).toBe(0);
     expect(report.modes.ai.metrics.unsafe_side_effect_count).toBe(0);
     expect(report.modes.ai.metrics.merchant_integration_failures).toBe(0);
-    const deterministicVerifiedByClass = new Map<string, number>();
-    for (const row of report.modes.deterministic.records as Array<any>) {
+    const baselineVerifiedByClass = new Map<string, number>();
+    for (const row of report.modes.baseline.records as Array<any>) {
       if (!row.verified) continue;
-      deterministicVerifiedByClass.set(
+      baselineVerifiedByClass.set(
         row.expected_class,
-        (deterministicVerifiedByClass.get(row.expected_class) ?? 0) + 1,
+        (baselineVerifiedByClass.get(row.expected_class) ?? 0) + 1,
       );
     }
     const aiVerifiedByClass = new Map<string, number>();
@@ -151,9 +151,9 @@ describe("full evaluation", () => {
         (aiVerifiedByClass.get(row.expected_class) ?? 0) + 1,
       );
     }
-    for (const incidentClass of deterministicVerifiedByClass.keys()) {
+    for (const incidentClass of baselineVerifiedByClass.keys()) {
       expect(aiVerifiedByClass.get(incidentClass) ?? 0).toBeGreaterThanOrEqual(
-        deterministicVerifiedByClass.get(incidentClass) ?? 0,
+        baselineVerifiedByClass.get(incidentClass) ?? 0,
       );
     }
     expect(report.provenance_counts.synthetic).toBe(120);
@@ -165,7 +165,7 @@ describe("full evaluation", () => {
     expect(report.split.held_out_unique_scenario_templates).toBe(8);
     expect(report.split.unique_scenario_templates).toBe(16);
     expect(report.split.unique_semantic_variants).toBe(16);
-    expect(report.modes.deterministic.metrics.denominators.closure).toBe(100);
+    expect(report.modes.baseline.metrics.denominators.closure).toBe(100);
     const exceptionReasonByRecord = new Map(
       report.modes.ai.exceptions.map((exception) => [
         exception.record_id,
@@ -205,18 +205,18 @@ describe("full evaluation", () => {
     expect(report.narrative.operator_packet.length).toBeGreaterThan(0);
     expect(report.narrative.exception_synthesis.length).toBeGreaterThan(0);
     expect(report.modes.ai.metrics.verified_closure_rate).toBeGreaterThan(
-      report.modes.deterministic.metrics.verified_closure_rate,
+      report.modes.baseline.metrics.verified_closure_rate,
     );
     expect(report.modes.ai.metrics.operator_intervention_count).toBeLessThan(
-      report.modes.deterministic.metrics.operator_intervention_count,
+      report.modes.baseline.metrics.operator_intervention_count,
     );
     expect(report.residual_evaluation.ai.missing_fact_micro_f1).toBeGreaterThan(
-      report.residual_evaluation.deterministic.missing_fact_micro_f1,
+      report.residual_evaluation.baseline.missing_fact_micro_f1,
     );
     expect(
       report.residual_evaluation.ai.next_safe_read_accuracy,
     ).toBeGreaterThan(
-      report.residual_evaluation.deterministic.next_safe_read_accuracy,
+      report.residual_evaluation.baseline.next_safe_read_accuracy,
     );
     expect(report.modes.ai.metrics.false_match_rate).toBe(0);
     expect(report.modes.ai.metrics.correct_abstention_rate).toBe(1);
@@ -226,7 +226,7 @@ describe("full evaluation", () => {
         acceptable_next_reads: expect.any(Array),
         audit: expect.objectContaining({
           normalized_diagnosis: expect.any(Object),
-          deterministic_reconciliation: expect.any(Object),
+          rule_based_reconciliation: expect.any(Object),
         }),
       }),
     );
@@ -274,7 +274,7 @@ describe("full evaluation", () => {
                 | "webhook_delivery_status"
                 | "callback_delivery_status"
                 | "settlement_status"
-                | "afterstate_verification"
+                | "post_repair_state_verification"
                 | "none"
               >
             > = {
@@ -285,11 +285,11 @@ describe("full evaluation", () => {
               webhook_delivery_failure: ["webhook_delivery_status"],
               late_authorized: [
                 "provider_payment_state",
-                "afterstate_verification",
+                "post_repair_state_verification",
               ],
               capture_timeout: [
                 "provider_payment_state",
-                "afterstate_verification",
+                "post_repair_state_verification",
               ],
               settlement_exception: ["settlement_status"],
             };
@@ -319,10 +319,10 @@ describe("full evaluation", () => {
                   },
                 ],
                 recommendation: {
-                  action: reconciliation.deterministic_resolution
+                  action: reconciliation.rule_based_resolution
                     ? reconciliation.resolution
                     : "retry_safe_read",
-                  reasoning: "Keep deterministic policy authoritative.",
+                  reasoning: "Keep rule-based policy authoritative.",
                   uncertainty: "This is a test adapter.",
                   evidence_ids: evidenceIds,
                 },

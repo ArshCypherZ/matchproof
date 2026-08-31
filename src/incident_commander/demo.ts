@@ -25,7 +25,7 @@ async function main() {
     )
     .join("\n");
   console.log(
-    `Matchproof\nDIAGNOSIS MODE: FIXTURE / REHEARSAL\n\nINCIDENT\n   payment=${result.bundle.payment_id}\n\nSAFETY DECISION (deterministic authority)\n${decisions}\n\nDURABLE OUTCOME\n   ${result.outcome.status}: ${result.outcome.before_state} -> ${result.outcome.after_state}\n   durable payment state=${result.payment_state.state}\n   amount_minor=${result.payment_state.amount_minor} currency=${result.payment_state.currency}\n   operation=${result.payment_state.operation} operation_key=${result.payment_state.operation_key}`,
+    `Matchproof\nDIAGNOSIS MODE: FIXTURE / REHEARSAL\n\nINCIDENT\n   payment=${result.bundle.payment_id}\n\nSAFETY DECISION (rule-based authority)\n${decisions}\n\nDURABLE OUTCOME\n   ${result.outcome.status}: ${result.outcome.before_state} -> ${result.outcome.after_state}\n   durable payment state=${result.payment_state.state}\n   amount_minor=${result.payment_state.amount_minor} currency=${result.payment_state.currency}\n   operation=${result.payment_state.operation} operation_key=${result.payment_state.operation_key}`,
   );
 }
 

@@ -8,7 +8,7 @@ import { merchantOrders } from "../src/db/sqlite-schema";
 import { SqliteMerchantPlatformAdapter } from "../src/db/sqlite-merchant-platform-adapter";
 import { IncidentStore, verifyBundle } from "../src/incident_commander/core";
 import { executeApprovedRecovery } from "../src/incident_commander/approved-recovery";
-import type { ProviderAfterstateAdapter } from "../src/incident_commander/afterstate-verifier";
+import type { ProviderPostRepairStateAdapter } from "../src/incident_commander/post-repair-state-verifier";
 
 const secret = "test-prototype-secret";
 
@@ -57,7 +57,7 @@ const merchantAdapter = async (file: string) => {
   return new SqliteMerchantPlatformAdapter(connection.db);
 };
 
-const capturedPaymentProvider: ProviderAfterstateAdapter = {
+const capturedPaymentProvider: ProviderPostRepairStateAdapter = {
   fetchPayment: async () => ({
     entity: "payment",
     id: "pay_paid_pending_001",
@@ -85,7 +85,7 @@ const capturedPaymentProvider: ProviderAfterstateAdapter = {
 };
 
 describe("approved recovery", () => {
-  it("executes the bounded merchant repair and verifies the afterstate", async () => {
+  it("executes the bounded merchant repair and verifies the post-repair state", async () => {
     const statePath = path.join(root, "incident.sqlite3");
     const store = new IncidentStore(statePath, true, secret, "tenant-approve");
     await store.initialize();
@@ -102,7 +102,7 @@ describe("approved recovery", () => {
     expect(result.status).toBe("executed");
     if (result.status !== "executed") throw new Error("repair did not execute");
     expect(result.outcome.status).toBe("reconciled");
-    expect(result.afterstate.status).toBe("verified");
+    expect(result.post_repair_state.status).toBe("verified");
     expect(
       await merchant.fetchOrderState("order_paid_pending_001"),
     ).toMatchObject({ state: "paid" });

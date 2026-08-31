@@ -80,7 +80,7 @@ const merchant = (): MerchantPlatformAdapter => ({
 });
 
 describe("RecoveryExecutor", () => {
-  it("hashes canonical execution identity deterministically", () => {
+  it("hashes canonical execution identity consistently", () => {
     const first = recoveryExecutionKey(allowed, context);
     expect(first).toMatch(/^recovery:[a-f0-9]{64}$/);
     expect(recoveryExecutionKey({ ...allowed }, { ...context })).toBe(first);

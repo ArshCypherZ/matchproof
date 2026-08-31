@@ -49,7 +49,7 @@ const recommendation = (action: string, evidenceIds = ["EV-WEBHOOK-001"]) =>
     evidence_ids: evidenceIds,
   });
 
-describe("deterministic action policy", () => {
+describe("rule-based action policy", () => {
   it.each([
     ["reconcile_internal_state", true],
     ["escalate", true],

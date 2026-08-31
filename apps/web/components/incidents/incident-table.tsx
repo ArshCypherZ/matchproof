@@ -142,8 +142,8 @@ export function IncidentQueue({ items }: { items: IncidentItem[] }) {
         : [...current, incidentId],
     );
   const allSelected = items.length > 0 && selected.length === items.length;
-  // An empty queue means different things: filters hid everything (there is
-  // a way out) or the queue is genuinely clear (there is nothing to do).
+  // An empty queue means one of two things: filters hid everything
+  // (recoverable) or the queue is genuinely clear (nothing to do).
   const filtersActive = [...params.keys()].some(
     (key) => key !== "page" && key !== "page_size",
   );
@@ -153,7 +153,7 @@ export function IncidentQueue({ items }: { items: IncidentItem[] }) {
         <div className="px-5 py-16 text-center text-sm text-muted-foreground">
           {filtersActive
             ? "No exceptions match these filters. Clear them to see the full queue."
-            : "The queue is clear — every exception is verified or escalated."}
+            : "The queue is clear. Every exception is verified or escalated."}
         </div>
       ) : (
         <>

@@ -184,7 +184,7 @@ async function evaluateCase(
     ].join(" ");
     const expectedReads = expectedSafeReads(reconstruction.incident_class);
     const failureReason = output.provenance.failure_reason;
-    const fallback = output.provenance.provider === "deterministic-fallback";
+    const fallback = output.provenance.provider === "rule-based-fallback";
     return {
       record_id: record.record_id,
       fixture: record.fixture,

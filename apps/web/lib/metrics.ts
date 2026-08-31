@@ -1,4 +1,4 @@
-import report from "../../../evaluation/deterministic-baseline.json";
+import report from "../../../evaluation/baseline.json";
 import { withStore } from "./incidents";
 import {
   tenantMetrics,
@@ -19,8 +19,8 @@ export const syntheticEvaluationMetrics = {
   runbook_count: report.metrics.runbook_count,
   no_action_count: report.metrics.no_action_count,
   ambiguous_count: report.metrics.ambiguous_count,
-  afterstate_verification_coverage:
-    report.metrics.afterstate_verification_coverage,
+  post_repair_state_verification_coverage:
+    report.metrics.post_repair_state_verification_coverage,
   unsafe_recommendations: report.metrics.enforced_unsafe_recommendation_count,
   unsafe_side_effects: report.metrics.unsafe_side_effect_count,
   duplicate_action_prevention_count:

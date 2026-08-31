@@ -29,7 +29,7 @@ export type EvaluationRecord = {
    * Marks incident classes whose evidence topology requires a bounded
    * provider read before the controller can reconcile: the evaluation
    * harness wires a read gateway for these rows so the tier-0 playbook and
-   * the tier-1 cluster investigator can actually run their reads.
+   * the tier-1 cluster investigator can run their reads.
    */
   investigation_gateway: boolean;
 };
@@ -54,7 +54,7 @@ const cases = [
     "capture_timeout_recoverable.json",
     "capture_timeout",
     "matched",
-    ["provider_payment_state", "afterstate_verification"],
+    ["provider_payment_state", "post_repair_state_verification"],
     ["fetch_payment"],
   ],
   [
@@ -89,7 +89,7 @@ const cases = [
     "late_authorized.json",
     "late_authorized",
     "abstained",
-    ["provider_payment_state", "afterstate_verification"],
+    ["provider_payment_state", "post_repair_state_verification"],
     ["fetch_payment"],
   ],
   [
@@ -112,7 +112,7 @@ const cases = [
  * topologies. Training uses the canonical topology for each incident class;
  * held-out rows add a valid replay of an existing webhook event. The replay
  * keeps the incident label stable while testing duplicate suppression and
- * ensures no scenario template is shared across the split.
+ * keeps each scenario template in a single split.
  */
 /**
  * Incident classes whose bundle evidence cannot prove provider state or order

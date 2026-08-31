@@ -10,7 +10,7 @@ const ACTION_NOUN = {
   escalate: "The escalation",
 } as const;
 
-// Map the route's status codes to what the operator can actually do next.
+// Map the route's status codes to the operator's next actions.
 async function actionError(
   action: "approve" | "escalate",
   response: Response | null,
@@ -27,7 +27,7 @@ async function actionError(
   };
   if (response.status === 409 && payload.reason)
     return `${noun} was blocked: ${humanizeReason(payload.reason)}. Reload the page to see the current evidence.`;
-  return `${noun} did not go through. No merchant state was changed — try again.`;
+  return `${noun} did not go through. No merchant state was changed. Try again.`;
 }
 
 function humanizeReason(reason: string) {
@@ -103,7 +103,7 @@ export function IncidentActions({
     const trimmed = reason.trim();
     if (!trimmed) {
       setReasonError(
-        "Write the stopping reason — it becomes the exception list entry.",
+        "Write the stopping reason. It becomes the exception list entry.",
       );
       return;
     }

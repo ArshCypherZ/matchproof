@@ -2,9 +2,9 @@ import { z } from "zod";
 import type { MerchantPlatformAdapter } from "../db/merchant-platform-adapter";
 import type { IncidentRepository } from "../db/repository";
 import {
-  AfterstateObservationSchema,
+  PostRepairStateObservationSchema,
   RazorpayPaymentSchema,
-  type AfterstateObservation,
+  type PostRepairStateObservation,
   type RazorpayPayment,
 } from "../domain/schemas";
 import { fetchTestModePaymentStatus, type RazorpayClient } from "./razorpay";
@@ -20,15 +20,15 @@ const VerificationContextSchema = z
   })
   .strict();
 
-export type AfterstateVerificationContext = z.infer<
+export type PostRepairStateVerificationContext = z.infer<
   typeof VerificationContextSchema
 >;
 
-export interface ProviderAfterstateAdapter {
+export interface ProviderPostRepairStateAdapter {
   fetchPayment(paymentId: string): Promise<RazorpayPayment>;
 }
 
-export class RazorpayProviderAfterstateAdapter implements ProviderAfterstateAdapter {
+export class RazorpayProviderPostRepairStateAdapter implements ProviderPostRepairStateAdapter {
   constructor(private readonly client?: RazorpayClient) {}
 
   fetchPayment(paymentId: string) {
@@ -36,15 +36,15 @@ export class RazorpayProviderAfterstateAdapter implements ProviderAfterstateAdap
   }
 }
 
-type AfterstateRepository = Pick<
+type PostRepairStateRepository = Pick<
   IncidentRepository,
-  "afterstateObservation" | "saveAfterstateObservation"
+  "postRepairStateObservation" | "savePostRepairStateObservation"
 >;
 
-export type AfterstateVerificationResult =
+export type PostRepairStateVerificationResult =
   | {
       status: "verified" | "escalated";
-      observation: AfterstateObservation;
+      observation: PostRepairStateObservation;
       reasons: string[];
       replayed: boolean;
     }
@@ -55,7 +55,7 @@ export type AfterstateVerificationResult =
     };
 
 function reasonsFor(
-  context: AfterstateVerificationContext,
+  context: PostRepairStateVerificationContext,
   provider: RazorpayPayment,
   merchant: Awaited<ReturnType<MerchantPlatformAdapter["fetchOrderState"]>>,
 ) {
@@ -64,7 +64,7 @@ function reasonsFor(
     reasons.push("provider payment identity does not match");
   if (provider.order_id !== context.orderId)
     reasons.push("provider order identity does not match");
-  // The verified afterstate is the provider state the deterministic repair
+  // The verified post-repair state is the provider state the rule-based repair
   // was based on: a repair justified by a late authorization verifies against
   // an authorized (or later captured) payment, every other repair against a
   // captured one.
@@ -104,32 +104,32 @@ function reasonsFor(
 }
 
 function resultFromObservation(
-  observation: AfterstateObservation,
+  observation: PostRepairStateObservation,
   replayed: boolean,
-): AfterstateVerificationResult {
+): PostRepairStateVerificationResult {
   return observation.invariant_holds
     ? { status: "verified", observation, reasons: [], replayed }
     : {
         status: "escalated",
         observation,
-        reasons: ["afterstate invariant does not hold"],
+        reasons: ["post-repair state invariant does not hold"],
         replayed,
       };
 }
 
-export class AfterstateVerifier {
+export class PostRepairStateVerifier {
   constructor(
-    private readonly repository: AfterstateRepository,
-    private readonly provider: ProviderAfterstateAdapter,
+    private readonly repository: PostRepairStateRepository,
+    private readonly provider: ProviderPostRepairStateAdapter,
     private readonly merchant: MerchantPlatformAdapter,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
   async verify(
-    input: AfterstateVerificationContext,
-  ): Promise<AfterstateVerificationResult> {
+    input: PostRepairStateVerificationContext,
+  ): Promise<PostRepairStateVerificationResult> {
     const context = VerificationContextSchema.parse(input);
-    const prior = await this.repository.afterstateObservation(
+    const prior = await this.repository.postRepairStateObservation(
       context.executionKey,
     );
     if (prior) return resultFromObservation(prior, true);
@@ -140,9 +140,9 @@ export class AfterstateVerifier {
     ]);
     const readFailures: string[] = [];
     if (providerResult.status === "rejected")
-      readFailures.push("provider afterstate read failed");
+      readFailures.push("provider post-repair state read failed");
     if (merchantResult.status === "rejected")
-      readFailures.push("merchant afterstate read failed");
+      readFailures.push("merchant post-repair state read failed");
     if (
       readFailures.length ||
       providerResult.status === "rejected" ||
@@ -153,7 +153,7 @@ export class AfterstateVerifier {
     const provider = RazorpayPaymentSchema.parse(providerResult.value);
     const merchant = merchantResult.value;
     const reasons = reasonsFor(context, provider, merchant);
-    const observation = AfterstateObservationSchema.parse({
+    const observation = PostRepairStateObservationSchema.parse({
       provider_object: { kind: "payment", object: provider },
       merchant_record: merchant
         ? {
@@ -168,7 +168,7 @@ export class AfterstateVerifier {
       invariant_holds: reasons.length === 0,
       observed_at: this.now().toISOString(),
     });
-    await this.repository.saveAfterstateObservation(
+    await this.repository.savePostRepairStateObservation(
       context.executionKey,
       observation,
     );

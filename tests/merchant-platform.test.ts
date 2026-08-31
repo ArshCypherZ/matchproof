@@ -175,7 +175,7 @@ describe("merchant platform adapter", () => {
     ).toBe("paid");
   });
 
-  it("fails closed when the independent afterstate observation disagrees", async () => {
+  it("fails closed when the independent post-repair state observation disagrees", async () => {
     seedOrder({ orderId: "merchant_order_stale" });
     class StaleReadAdapter extends SqliteMerchantPlatformAdapter {
       override async fetchOrderState(orderId: string) {

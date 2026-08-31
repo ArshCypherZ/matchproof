@@ -30,7 +30,7 @@ type RunResult = {
   incident_id: string;
   incident_class: string;
   outcome: string;
-  afterstate_verification: string;
+  post_repair_state_verification: string;
   payment_state: string;
   order_state: string | null;
   gate_decisions: {
@@ -174,7 +174,7 @@ export function DemoStepper() {
           ? payload.reason
           : typeof payload.error === "string"
             ? payload.error
-            : "This step could not be completed — try again.",
+            : "This step could not be completed. Try again.",
       );
     return payload;
   }, []);
@@ -305,7 +305,7 @@ export function DemoStepper() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "The exception could not be created. No records were changed — try again.",
+          : "The exception could not be created. No records were changed. Try again.",
       );
     } finally {
       setBusy(false);
@@ -327,7 +327,7 @@ export function DemoStepper() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "The controller run failed. The exception was not changed — try again.",
+          : "The controller run failed. The exception was not changed. Try again.",
       );
     } finally {
       setBusy(false);
@@ -581,7 +581,7 @@ export function DemoStepper() {
               {[
                 ["Exception type", result.incident_class],
                 ["Outcome", result.outcome],
-                ["Post-action check", result.afterstate_verification],
+                ["Post-action check", result.post_repair_state_verification],
                 ["Payment state", result.payment_state],
                 ["Merchant order", result.order_state ?? "unknown"],
               ].map(([label, value]) => (

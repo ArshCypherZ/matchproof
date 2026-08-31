@@ -4,8 +4,8 @@
   "id": "ff59da33-e731-4c93-903d-f23ac37d54c8",
   "prevId": "442bfb64-e04f-4ddf-8d80-2458608dc3da",
   "tables": {
-    "afterstate_observations": {
-      "name": "afterstate_observations",
+    "post_repair_state_observations": {
+      "name": "post_repair_state_observations",
       "columns": {
         "execution_key": {
           "name": "execution_key",

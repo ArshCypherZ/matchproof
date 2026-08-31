@@ -109,7 +109,7 @@ export class RecoveryExecutor {
         reason: "merchant-state repair requires operator ownership",
         escalation_reason: parsed.reason,
         terminal_owner: "payment-operations",
-        policy_version: "deterministic-policy-v1",
+        policy_version: "rule-based-policy",
         credential_scope: "merchant-state-reconciliation",
       });
     }
@@ -172,7 +172,7 @@ export class RecoveryExecutor {
         ? {
             escalation_reason: decision.reason,
             terminal_owner: "payment-operations",
-            policy_version: "deterministic-policy-v1",
+            policy_version: "rule-based-policy",
             credential_scope: "merchant-state-reconciliation",
           }
         : {}),

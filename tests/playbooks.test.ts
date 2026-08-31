@@ -29,8 +29,8 @@ const context = (name: string) => {
   };
 };
 
-describe("tier 0 deterministic playbooks", () => {
-  it("closes a deterministically resolvable incident with no model call", () => {
+describe("tier 0 rule-based playbooks", () => {
+  it("closes a rule-resolvable incident with no model call", () => {
     resetMetrics();
     const current = context("paid_pending.json");
     const output = new PlaybookDiagnosisAdapter().diagnose(
@@ -38,7 +38,7 @@ describe("tier 0 deterministic playbooks", () => {
       current.reconstruction,
       current.reconciliation,
     );
-    expect(output.provenance.provider).toBe("deterministic-playbook");
+    expect(output.provenance.provider).toBe("rule-based-playbook");
     expect(output.diagnosis.recommendation.action).toBe(
       "reconcile_internal_state",
     );
@@ -62,7 +62,7 @@ describe("tier 0 deterministic playbooks", () => {
     expect(TIER0_READ_PLANS.capture_timeout).toContain("fetch_payment");
   });
 
-  it("escalates residual classes with no deterministic path", () => {
+  it("escalates residual classes with no rule-based path", () => {
     const current = context("webhook_delivery_failure.json");
     const output = new PlaybookDiagnosisAdapter().diagnose(
       current.bundle,
@@ -175,7 +175,7 @@ describe("tier 0 deterministic playbooks", () => {
       },
       listPendingOrders: async () => [],
     };
-    const providerAfterstate = {
+    const providerPostRepairState = {
       fetchPayment: async () => ({
         entity: "payment",
         id: "pay_capture_timeout_recoverable_001",
@@ -196,7 +196,7 @@ describe("tier 0 deterministic playbooks", () => {
       mode: "fixture",
       mcpGateway: gateway,
       merchantPlatformAdapter: merchant as never,
-      providerAfterstateAdapter: providerAfterstate as never,
+      providerPostRepairStateAdapter: providerPostRepairState as never,
       applyInvestigationObservation: (
         value: Parameters<
           NonNullable<
@@ -230,9 +230,9 @@ describe("tier 0 deterministic playbooks", () => {
         };
       },
     });
-    expect(result.model_provenance.provider).toBe("deterministic-playbook");
+    expect(result.model_provenance.provider).toBe("rule-based-playbook");
     expect(result.outcome.status).toBe("reconciled");
-    expect(result.afterstate_verification?.status).toBe("verified");
+    expect(result.post_repair_state_verification?.status).toBe("verified");
     expect(result.investigation_trace?.[0]?.requested_read?.tool).toBe(
       "fetch_payment",
     );
@@ -258,16 +258,16 @@ describe("tier 2 narrative", () => {
       {
         record_id: "eval-001",
         incident_class: "webhook_delivery_failure",
-        reason: "merchant afterstate adapter is required",
+        reason: "merchant post-repair state adapter is required",
         terminal_owner: "payment-operations",
         stopping_reason: "held safely",
       },
     ],
   };
 
-  it("renders a deterministic narrative without a model", async () => {
+  it("renders a rule-based narrative without a model", async () => {
     const report = await new NarrativeGenerator().generate(input);
-    expect(report.provenance.provider).toBe("deterministic-narrative");
+    expect(report.provenance.provider).toBe("rule-based-narrative");
     expect(report.batch_summary).toContain("87 of 100");
     expect(report.operator_packet).toContain("exception");
     expect(report.exception_synthesis).toContain("eval-001");
@@ -292,13 +292,13 @@ describe("tier 2 narrative", () => {
     expect(transport).toHaveBeenCalledOnce();
   });
 
-  it("falls back to the deterministic narrative when the model fails", async () => {
+  it("falls back to the rule-based narrative when the model fails", async () => {
     const report = await new NarrativeGenerator({
       apiKey: "test-key",
       transport: async () => {
         throw new Error("rate limited");
       },
     }).generate(input);
-    expect(report.provenance.provider).toBe("deterministic-narrative");
+    expect(report.provenance.provider).toBe("rule-based-narrative");
   });
 });

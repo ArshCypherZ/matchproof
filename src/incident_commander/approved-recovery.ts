@@ -7,10 +7,10 @@ import {
   type PolicyAuditLogger,
 } from "./core";
 import {
-  AfterstateVerifier,
-  type AfterstateVerificationResult,
-  type ProviderAfterstateAdapter,
-} from "./afterstate-verifier";
+  PostRepairStateVerifier,
+  type PostRepairStateVerificationResult,
+  type ProviderPostRepairStateAdapter,
+} from "./post-repair-state-verifier";
 import type { MerchantPlatformAdapter } from "../db/merchant-platform-adapter";
 import {
   RecommendationSchema,
@@ -25,7 +25,7 @@ export type ApprovedRecoveryOptions = {
   actor: string;
   reason?: string;
   merchant: MerchantPlatformAdapter;
-  provider: ProviderAfterstateAdapter;
+  provider: ProviderPostRepairStateAdapter;
 };
 
 export type ApprovedRecoveryResult =
@@ -40,13 +40,13 @@ export type ApprovedRecoveryResult =
   | {
       status: "executed";
       outcome: RecoveryOutcome;
-      afterstate: AfterstateVerificationResult;
+      post_repair_state: PostRepairStateVerificationResult;
     };
 
 /**
  * Executes the execution tail of the closed loop for one stored incident after
  * an operator approval. The incident is re-loaded, re-reconciled against the
- * current merchant state, and passed through the deterministic policy gate
+ * current merchant state, and passed through the rule-based policy gate
  * before any merchant mutation is attempted.
  */
 export async function executeApprovedRecovery(
@@ -84,7 +84,7 @@ export async function executeApprovedRecovery(
 
   if (
     reconciliation.resolution !== "reconcile_internal_state" ||
-    !reconciliation.deterministic_resolution
+    !reconciliation.rule_based_resolution
   )
     return {
       status: "nothing_to_approve",
@@ -114,10 +114,10 @@ export async function executeApprovedRecovery(
   const recommendation = RecommendationSchema.parse({
     action: "reconcile_internal_state",
     reasoning:
-      "Operator approval authorizes one bounded merchant-state repair under the deterministic policy gate.",
+      "Operator approval authorizes one bounded merchant-state repair under the rule-based policy gate.",
     uncertainty:
       reconciliation.ambiguity_reasons.join("; ") ||
-      "deterministic reconciliation resolved without ambiguity",
+      "rule-based reconciliation resolved without ambiguity",
     evidence_ids: reconciliation.evidence_ids.filter((id) =>
       timelineIds.has(id),
     ),
@@ -170,7 +170,7 @@ export async function executeApprovedRecovery(
     reconciliation.provider_state === "authorized_verified"
       ? "authorized"
       : "captured";
-  const afterstate = await new AfterstateVerifier(
+  const postRepairState = await new PostRepairStateVerifier(
     store,
     provider,
     merchant,
@@ -182,8 +182,8 @@ export async function executeApprovedRecovery(
     currency: payment.currency,
     providerStatus,
   });
-  await store.audit("afterstate_observed", afterstate);
-  if (afterstate.status === "verified") {
+  await store.audit("post_repair_state_observed", postRepairState);
+  if (postRepairState.status === "verified") {
     // Keep the durable payment record aligned with the verified repair so the
     // reported state and the stored row cannot disagree.
     await store.updatePayment(bundle.payment_id, "paid");
@@ -196,11 +196,11 @@ export async function executeApprovedRecovery(
     ...(reason ? { reason } : {}),
   });
   await store.setProgress(incidentId, "observe", "completed", {
-    afterstate_status: afterstate.status,
-    ...(afterstate.reasons.length ? { reasons: afterstate.reasons } : {}),
+    post_repair_state_status: postRepairState.status,
+    ...(postRepairState.reasons.length ? { reasons: postRepairState.reasons } : {}),
   });
   const verified =
-    outcome.status === "reconciled" && afterstate.status === "verified";
+    outcome.status === "reconciled" && postRepairState.status === "verified";
   await store.setProgress(
     incidentId,
     verified ? "close" : "escalate",
@@ -208,10 +208,10 @@ export async function executeApprovedRecovery(
     {
       action: "approve",
       outcome: outcome.status,
-      afterstate_status: afterstate.status,
-      ...(afterstate.reasons.length ? { reasons: afterstate.reasons } : {}),
+      post_repair_state_status: postRepairState.status,
+      ...(postRepairState.reasons.length ? { reasons: postRepairState.reasons } : {}),
     },
   );
 
-  return { status: "executed", outcome, afterstate };
+  return { status: "executed", outcome, post_repair_state: postRepairState };
 }

@@ -50,7 +50,7 @@ const diagnosis = (
           rank: 1,
           summary: "Provider evidence needs one bounded verification.",
           reasoning: "The cited timeline leaves a residual fact unresolved.",
-          uncertainty: "The fresh provider afterstate is not yet observed.",
+          uncertainty: "The fresh provider post-repair state is not yet observed.",
           confidence: 0.8,
           evidence_ids: [evidenceId],
         },
@@ -65,7 +65,7 @@ const diagnosis = (
         missing_fact: "The current provider payment state.",
         next_safe_read: {
           tool,
-          reason: "Verify the current provider afterstate.",
+          reason: "Verify the current provider post-repair state.",
           expected_fact: "A fresh provider payment state.",
           evidence_ids: [evidenceId],
         },
@@ -75,12 +75,12 @@ const diagnosis = (
               ? "evidence_complete_escalation"
               : "safe_read_retry",
           rationale:
-            "Use a bounded read before deterministic policy evaluation.",
+            "Use a bounded read before rule-based policy evaluation.",
           stopping_condition: "Stop after verified evidence or escalation.",
         },
         operator_packet: {
           summary: "A residual provider fact is cited and bounded.",
-          decision_needed: "Review the deterministic policy result.",
+          decision_needed: "Review the rule-based policy result.",
           terminal_owner: "payment-operations",
           evidence_ids: [evidenceId],
         },
@@ -261,7 +261,7 @@ describe("AgentInvestigator", () => {
     expect(result.stop_reason).toBe("read_failed");
     expect(result.trace[0]?.observation?.result).toBe("rate_limited");
     expect(result.output.provenance.provider).toBe(
-      "deterministic-investigation-fallback",
+      "rule-based-investigation-fallback",
     );
   });
 
@@ -311,7 +311,7 @@ describe("AgentInvestigator", () => {
         ...value,
         reconciliation: {
           ...value.reconciliation,
-          deterministic_resolution: true,
+          rule_based_resolution: true,
           resolution: "reconcile_internal_state" as const,
         },
       }),
@@ -324,7 +324,7 @@ describe("AgentInvestigator", () => {
     expect(result.stop_reason).toBe("completed");
     expect(result.trace).toHaveLength(2);
     expect(result.trace[0]?.requested_read?.tool).toBe("fetch_payment");
-    expect(result.context.reconciliation.deterministic_resolution).toBe(true);
+    expect(result.context.reconciliation.rule_based_resolution).toBe(true);
     expect(diagnose).toHaveBeenCalledTimes(2);
   });
 });

@@ -4,8 +4,8 @@
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.afterstate_observations": {
-      "name": "afterstate_observations",
+    "public.post_repair_state_observations": {
+      "name": "post_repair_state_observations",
       "schema": "",
       "columns": {
         "execution_key": {

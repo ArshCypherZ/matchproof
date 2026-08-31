@@ -91,15 +91,15 @@ export class IncidentStore {
   ) {
     return this.repository.completeRecovery(...args);
   }
-  saveAfterstateObservation(
-    ...args: Parameters<IncidentRepository["saveAfterstateObservation"]>
+  savePostRepairStateObservation(
+    ...args: Parameters<IncidentRepository["savePostRepairStateObservation"]>
   ) {
-    return this.repository.saveAfterstateObservation(...args);
+    return this.repository.savePostRepairStateObservation(...args);
   }
-  afterstateObservation(
-    ...args: Parameters<IncidentRepository["afterstateObservation"]>
+  postRepairStateObservation(
+    ...args: Parameters<IncidentRepository["postRepairStateObservation"]>
   ) {
-    return this.repository.afterstateObservation(...args);
+    return this.repository.postRepairStateObservation(...args);
   }
   updatePayment(...args: Parameters<IncidentRepository["updatePayment"]>) {
     return this.repository.updatePayment(...args);

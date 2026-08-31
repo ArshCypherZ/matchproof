@@ -5,7 +5,7 @@ export type ObservabilityEvent =
   | "webhook_received"
   | "policy_decision"
   | "execution_attempt"
-  | "afterstate_result"
+  | "post_repair_state_result"
   | "incident_closed"
   | "incident_escalated"
   | "model_call_started"

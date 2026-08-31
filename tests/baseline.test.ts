@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EVALUATION_DATASET } from "../src/evaluation/dataset";
-import { runDeterministicBaseline } from "../src/evaluation/deterministic-baseline";
+import { runBaseline } from "../src/evaluation/baseline";
 
-describe("deterministic baseline", () => {
+describe("baseline", () => {
   it("contains a labeled batch with 100 held-out records spanning all fixture classes", () => {
     expect(EVALUATION_DATASET).toHaveLength(120);
     expect(
@@ -43,8 +43,8 @@ describe("deterministic baseline", () => {
     ).toBe(false);
   });
 
-  it("reports reproducible deterministic safety metrics", async () => {
-    const report = await runDeterministicBaseline(
+  it("reports reproducible baseline safety metrics", async () => {
+    const report = await runBaseline(
       EVALUATION_DATASET.slice(0, 8),
     );
     expect(report.record_count).toBe(8);

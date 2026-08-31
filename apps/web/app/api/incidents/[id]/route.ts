@@ -7,7 +7,7 @@ import {
 import { executeApprovedRecovery } from "../../../../../../src/incident_commander/approved-recovery";
 import { sharedDatabase } from "../../../../../../src/db/client";
 import { PostgresMerchantPlatformAdapter } from "../../../../../../src/db/postgres-merchant-platform-adapter";
-import { RazorpayProviderAfterstateAdapter } from "../../../../../../src/incident_commander/afterstate-verifier";
+import { RazorpayProviderPostRepairStateAdapter } from "../../../../../../src/incident_commander/post-repair-state-verifier";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +54,7 @@ async function approveIncident(
       actor,
       ...(reason ? { reason } : {}),
       merchant: new PostgresMerchantPlatformAdapter(connection.db),
-      provider: new RazorpayProviderAfterstateAdapter(),
+      provider: new RazorpayProviderPostRepairStateAdapter(),
     });
   });
   if (!result) return Response.json({ error: "not_found" }, { status: 404 });
@@ -81,7 +81,7 @@ async function approveIncident(
         incident_id: id,
         action: "approve",
         outcome: result.outcome.status,
-        afterstate: result.afterstate.status,
+        post_repair_state: result.post_repair_state.status,
       });
   }
 }

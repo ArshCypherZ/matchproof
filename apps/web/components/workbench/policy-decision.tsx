@@ -36,7 +36,7 @@ export function PolicyDecision({
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div>
           <p className="font-data text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-            Approval policy / v1
+            Approval policy
           </p>
           <h2 id="policy-heading" className="mt-1 text-lg font-semibold">
             Approval decision
@@ -74,7 +74,7 @@ export function PolicyDecision({
         <div>
           <dt className="text-xs text-muted-foreground">Policy version</dt>
           <dd className="mt-1">
-            <TechBadge>policy-v1</TechBadge>
+            <TechBadge>rule-based-policy</TechBadge>
           </dd>
         </div>
         <div className="sm:col-span-2">

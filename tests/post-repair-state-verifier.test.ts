@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MerchantPlatformAdapter } from "../src/db/merchant-platform-adapter";
-import type { AfterstateObservation } from "../src/domain/schemas";
+import type { PostRepairStateObservation } from "../src/domain/schemas";
 import {
-  AfterstateVerifier,
-  type ProviderAfterstateAdapter,
-} from "../src/incident_commander/afterstate-verifier";
+  PostRepairStateVerifier,
+  type ProviderPostRepairStateAdapter,
+} from "../src/incident_commander/post-repair-state-verifier";
 
 const context = {
-  executionKey: "recovery:afterstate-demo-001",
+  executionKey: "recovery:post-repair-state-demo-001",
   paymentId: "pay_demo_001",
   orderId: "order_demo_001",
   amountMinor: 125000,
@@ -39,16 +39,16 @@ const order = () => ({
   observed_at: "2026-08-25T12:01:00.000Z",
 });
 
-class MemoryAfterstateRepository {
-  observations = new Map<string, AfterstateObservation>();
+class MemoryPostRepairStateRepository {
+  observations = new Map<string, PostRepairStateObservation>();
 
-  async afterstateObservation(key: string) {
+  async postRepairStateObservation(key: string) {
     return this.observations.get(key);
   }
 
-  async saveAfterstateObservation(
+  async savePostRepairStateObservation(
     key: string,
-    observation: AfterstateObservation,
+    observation: PostRepairStateObservation,
   ) {
     if (this.observations.has(key)) return false;
     this.observations.set(key, observation);
@@ -57,7 +57,7 @@ class MemoryAfterstateRepository {
 }
 
 const adapters = () => {
-  const provider: ProviderAfterstateAdapter = {
+  const provider: ProviderPostRepairStateAdapter = {
     fetchPayment: vi.fn(async () => payment()),
   };
   const merchant: MerchantPlatformAdapter = {
@@ -68,11 +68,11 @@ const adapters = () => {
   return { provider, merchant };
 };
 
-describe("AfterstateVerifier", () => {
+describe("PostRepairStateVerifier", () => {
   it("verifies and durably records matching fresh observations", async () => {
-    const repository = new MemoryAfterstateRepository();
+    const repository = new MemoryPostRepairStateRepository();
     const { provider, merchant } = adapters();
-    const verifier = new AfterstateVerifier(
+    const verifier = new PostRepairStateVerifier(
       repository,
       provider,
       merchant,
@@ -96,7 +96,7 @@ describe("AfterstateVerifier", () => {
   });
 
   it("escalates and records identity, state, amount, and currency mismatches", async () => {
-    const repository = new MemoryAfterstateRepository();
+    const repository = new MemoryPostRepairStateRepository();
     const { provider, merchant } = adapters();
     vi.mocked(provider.fetchPayment).mockResolvedValue({
       ...payment(),
@@ -114,7 +114,7 @@ describe("AfterstateVerifier", () => {
       currency: "USD",
     });
 
-    const result = await new AfterstateVerifier(
+    const result = await new PostRepairStateVerifier(
       repository,
       provider,
       merchant,
@@ -138,12 +138,12 @@ describe("AfterstateVerifier", () => {
     ).toBe(false);
   });
 
-  it("holds when the provider afterstate read fails", async () => {
-    const repository = new MemoryAfterstateRepository();
+  it("holds when the provider post-repair state read fails", async () => {
+    const repository = new MemoryPostRepairStateRepository();
     const { provider, merchant } = adapters();
     vi.mocked(provider.fetchPayment).mockRejectedValue(new Error("timeout"));
 
-    const result = await new AfterstateVerifier(
+    const result = await new PostRepairStateVerifier(
       repository,
       provider,
       merchant,
@@ -151,19 +151,19 @@ describe("AfterstateVerifier", () => {
 
     expect(result).toEqual({
       status: "held",
-      reasons: ["provider afterstate read failed"],
+      reasons: ["provider post-repair state read failed"],
       replayed: false,
     });
     expect(merchant.fetchOrderState).toHaveBeenCalledOnce();
     expect(repository.observations.size).toBe(0);
   });
 
-  it("holds when the merchant afterstate read fails", async () => {
-    const repository = new MemoryAfterstateRepository();
+  it("holds when the merchant post-repair state read fails", async () => {
+    const repository = new MemoryPostRepairStateRepository();
     const { provider, merchant } = adapters();
     vi.mocked(merchant.fetchOrderState).mockRejectedValue(new Error("offline"));
 
-    const result = await new AfterstateVerifier(
+    const result = await new PostRepairStateVerifier(
       repository,
       provider,
       merchant,
@@ -171,7 +171,7 @@ describe("AfterstateVerifier", () => {
 
     expect(result).toEqual({
       status: "held",
-      reasons: ["merchant afterstate read failed"],
+      reasons: ["merchant post-repair state read failed"],
       replayed: false,
     });
     expect(provider.fetchPayment).toHaveBeenCalledOnce();
@@ -179,9 +179,9 @@ describe("AfterstateVerifier", () => {
   });
 
   it("replays the durable observation without repeating provider or merchant reads", async () => {
-    const repository = new MemoryAfterstateRepository();
+    const repository = new MemoryPostRepairStateRepository();
     const firstAdapters = adapters();
-    const first = new AfterstateVerifier(
+    const first = new PostRepairStateVerifier(
       repository,
       firstAdapters.provider,
       firstAdapters.merchant,
@@ -189,7 +189,7 @@ describe("AfterstateVerifier", () => {
     await first.verify(context);
 
     const restartAdapters = adapters();
-    const replay = await new AfterstateVerifier(
+    const replay = await new PostRepairStateVerifier(
       repository,
       restartAdapters.provider,
       restartAdapters.merchant,
