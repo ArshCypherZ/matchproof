@@ -1,224 +1,24 @@
 {
-  "generated_at": "2026-08-28T12:43:07.320Z",
+  "generated_at": "2026-08-31T14:06:29.802Z",
   "mode": "fixture",
-  "record_count": 120,
+  "record_count": 100,
   "metrics": {
     "exact_match_accuracy_on_matchable": 1,
-    "matchable_coverage": 0.5,
+    "matchable_coverage": 0.49,
     "correct_abstention_rate": 1,
     "false_match_rate": 0,
     "controller_incident_classification_accuracy": 1,
     "controller_incident_classification_macro_f1": 1,
     "automatic_count": 0,
-    "runbook_count": 45,
+    "runbook_count": 37,
     "no_action_count": 0,
-    "ambiguous_count": 75,
-    "post_repair_state_verification_coverage": 0.375,
+    "ambiguous_count": 63,
+    "post_repair_state_verification_coverage": 0.37,
     "duplicate_action_prevention_count": 0,
     "enforced_unsafe_recommendation_count": 0,
     "unsafe_side_effect_count": 0
   },
   "records": [
-    {
-      "record_id": "eval-001",
-      "expected_class": "paid_pending",
-      "actual_class": "paid_pending",
-      "terminal": "reconciled",
-      "resolution": "reconcile_internal_state",
-      "expected_match": "matched",
-      "actual_match": "matched",
-      "post_repair_state_verified": true
-    },
-    {
-      "record_id": "eval-002",
-      "expected_class": "capture_timeout",
-      "actual_class": "capture_timeout",
-      "terminal": "reconciled",
-      "resolution": "reconcile_internal_state",
-      "expected_match": "matched",
-      "actual_match": "matched",
-      "post_repair_state_verified": true
-    },
-    {
-      "record_id": "eval-003",
-      "expected_class": "paid_missing",
-      "actual_class": "paid_missing",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-004",
-      "expected_class": "one_payment_two_orders",
-      "actual_class": "one_payment_two_orders",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "unmatched",
-      "actual_match": "unmatched",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-005",
-      "expected_class": "callback_missing_webhook_recovers",
-      "actual_class": "callback_missing_webhook_recovers",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-006",
-      "expected_class": "webhook_delivery_failure",
-      "actual_class": "webhook_delivery_failure",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-007",
-      "expected_class": "late_authorized",
-      "actual_class": "late_authorized",
-      "terminal": "reconciled",
-      "resolution": "reconcile_internal_state",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": true
-    },
-    {
-      "record_id": "eval-008",
-      "expected_class": "settlement_exception",
-      "actual_class": "settlement_exception",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "matched",
-      "actual_match": "matched",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-009",
-      "expected_class": "paid_pending",
-      "actual_class": "paid_pending",
-      "terminal": "reconciled",
-      "resolution": "reconcile_internal_state",
-      "expected_match": "matched",
-      "actual_match": "matched",
-      "post_repair_state_verified": true
-    },
-    {
-      "record_id": "eval-010",
-      "expected_class": "capture_timeout",
-      "actual_class": "capture_timeout",
-      "terminal": "reconciled",
-      "resolution": "reconcile_internal_state",
-      "expected_match": "matched",
-      "actual_match": "matched",
-      "post_repair_state_verified": true
-    },
-    {
-      "record_id": "eval-011",
-      "expected_class": "paid_missing",
-      "actual_class": "paid_missing",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-012",
-      "expected_class": "one_payment_two_orders",
-      "actual_class": "one_payment_two_orders",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "unmatched",
-      "actual_match": "unmatched",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-013",
-      "expected_class": "callback_missing_webhook_recovers",
-      "actual_class": "callback_missing_webhook_recovers",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-014",
-      "expected_class": "webhook_delivery_failure",
-      "actual_class": "webhook_delivery_failure",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-015",
-      "expected_class": "late_authorized",
-      "actual_class": "late_authorized",
-      "terminal": "reconciled",
-      "resolution": "reconcile_internal_state",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": true
-    },
-    {
-      "record_id": "eval-016",
-      "expected_class": "settlement_exception",
-      "actual_class": "settlement_exception",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "matched",
-      "actual_match": "matched",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-017",
-      "expected_class": "paid_pending",
-      "actual_class": "paid_pending",
-      "terminal": "reconciled",
-      "resolution": "reconcile_internal_state",
-      "expected_match": "matched",
-      "actual_match": "matched",
-      "post_repair_state_verified": true
-    },
-    {
-      "record_id": "eval-018",
-      "expected_class": "capture_timeout",
-      "actual_class": "capture_timeout",
-      "terminal": "reconciled",
-      "resolution": "reconcile_internal_state",
-      "expected_match": "matched",
-      "actual_match": "matched",
-      "post_repair_state_verified": true
-    },
-    {
-      "record_id": "eval-019",
-      "expected_class": "paid_missing",
-      "actual_class": "paid_missing",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "abstained",
-      "actual_match": "abstained",
-      "post_repair_state_verified": false
-    },
-    {
-      "record_id": "eval-020",
-      "expected_class": "one_payment_two_orders",
-      "actual_class": "one_payment_two_orders",
-      "terminal": "escalated",
-      "resolution": "escalate",
-      "expected_match": "unmatched",
-      "actual_match": "unmatched",
-      "post_repair_state_verified": false
-    },
     {
       "record_id": "eval-021",
       "expected_class": "callback_missing_webhook_recovers",

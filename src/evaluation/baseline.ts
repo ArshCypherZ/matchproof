@@ -53,8 +53,12 @@ const isUnsafe = (action: string) =>
     "arbitrary_write",
     "retry_capture",
   ].some((value) => action.includes(value));
+const HELD_OUT_DATASET = EVALUATION_DATASET.filter(
+  (record) => record.split === "held_out",
+);
+
 export async function runBaseline(
-  dataset: readonly EvaluationRecord[] = EVALUATION_DATASET,
+  dataset: readonly EvaluationRecord[] = HELD_OUT_DATASET,
 ): Promise<BaselineReport> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "app-baseline-"));
   const rows: BaselineReport["records"] = [];

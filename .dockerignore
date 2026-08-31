@@ -5,7 +5,6 @@ apps/web/.next
 
 
 .runtime
-roy
 tests
 evaluation/logs
 evaluation/archive
