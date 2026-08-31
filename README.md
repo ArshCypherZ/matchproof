@@ -16,7 +16,7 @@ Plays one incident end to end against a fixture: a payment that timed out after 
 
 <p align="center"><img src="docs/architecture-system.svg" alt="Matchproof system architecture: a Next.js dashboard and dashboard API sit on top of our TypeScript algorithm at its core; Razorpay feeds it verified webhooks and answers its payment reads; a Groq model advises read-only; Postgres, SQLite, a Redis job queue, and OpenTelemetry sit underneath." width="820"></p>
 
-The AI can look, but it cannot touch anything. A fixed rule set inside the engine is the only thing allowed to write.
+The AI can look, but it cannot touch anything. A fixed rule set inside our algorithm is the only thing allowed to write.
 
 ## One incident, end to end
 
@@ -88,7 +88,7 @@ All configuration lives in `.env.example` with comments and links for every key.
 ## Layout
 
 ```
-src/incident_commander/   the engine: webhook, evidence, reconciliation, policy, recovery, verification
+src/incident_commander/   our algorithm: webhook, evidence, reconciliation, policy, recovery, verification
 src/evaluation/           dataset and evaluation runners
 src/db/                   schemas and Postgres/SQLite repositories
 apps/web/                 dashboard: exceptions, batches, metrics, review workbench
@@ -96,4 +96,4 @@ tests/                    unit, red-team, integration, live Razorpay E2E
 fixtures/                 synthetic incident fixtures
 ```
 
-Unit suites cover every engine stage. `tests/red-team.test.ts` and `tests/security-hardening.test.ts` attack it with forged signatures, cross-tenant leakage, stale evidence, prompt injection, and replay after closure. `pnpm verify` runs typecheck, lint, format, and the unit suite in one command.
+Unit suites cover every stage of the algorithm. `tests/red-team.test.ts` and `tests/security-hardening.test.ts` attack it with forged signatures, cross-tenant leakage, stale evidence, prompt injection, and replay after closure. `pnpm verify` runs typecheck, lint, format, and the unit suite in one command.
