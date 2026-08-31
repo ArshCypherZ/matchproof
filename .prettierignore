@@ -1,2 +1,2 @@
-
-apps/web/
+# Local dot-directories (build output, caches)
+apps/web/.*

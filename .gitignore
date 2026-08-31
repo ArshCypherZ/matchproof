@@ -7,3 +7,5 @@ build/
 evaluation/logs/
 evaluation/archive/
 evaluation/*.log
+evaluation/full-evaluation.json
+evaluation/full-evaluation-audit.jsonl

@@ -1,13 +1,12 @@
+.*
+apps/web/.*
 node_modules
 apps/web/node_modules
-apps/web/.next
-.git
-
-
 .runtime
 tests
 evaluation/logs
 evaluation/archive
 evaluation/*.log
+evaluation/full-evaluation.json
+evaluation/full-evaluation-audit.jsonl
 *.log
-.env.local
