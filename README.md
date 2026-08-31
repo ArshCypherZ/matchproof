@@ -20,7 +20,7 @@ The AI can look, but it cannot touch anything. A fixed rule set inside the engin
 
 ## One incident, end to end
 
-<p align="center"><img src="docs/incident-flow.svg" alt="Incident flow: a customer pays, the order stays unpaid, the engine pulls both records and runs nine checks, the gate decides if the fix is provable, the order is updated and both records re-read. 37 of 100 close verified; 63 land in an exception queue with evidence, an owner, and a reason, where an operator reviews them and approvals re-enter the same checks. An AI advisor names missing facts for the operator, five calls per batch." width="640"></p>
+<p align="center"><img src="docs/incident-flow.svg" alt="Incident flow: a customer pays, the order stays unpaid, the engine pulls both records and runs nine checks, the gate decides if the fix is provable, the order is updated and both records re-read. 37 of 100 close verified; 63 land in an exception queue with evidence, an owner, and a reason; an AI advisor names the missing facts, five calls per batch; the operator reviews in the dashboard and approvals re-enter the same checks." width="600"></p>
 
 The numbers on the diagram come from 100 held-out labeled records: 120 synthetic incidents generated across eight failure templates, split 20 train / 100 held-out. The AI's five calls go to the 63 hard rows, not the 37 easy ones.
 

@@ -3,9 +3,9 @@
 <rect width="1440" height="880" fill="#f2eee5"/>
 <text x="40" y="48" font-size="21" font-weight="bold" fill="#181715">Matchproof</text>
 <text x="163" y="48" font-size="21" fill="#57534a">system architecture</text>
-<rect x="405" y="170" width="990" height="410" rx="14" fill="#eee8dd" stroke="#cec7ba" stroke-width="1"/>
+<rect x="405" y="170" width="990" height="410" rx="14" fill="#f2eee5" stroke="#cec7ba" stroke-width="1"/>
 <text x="425" y="194" font-size="13" font-weight="bold" fill="#57534a">MATCHPROOF APP · TYPESCRIPT</text>
-<rect x="405" y="685" width="990" height="160" rx="14" fill="#eee8dd" stroke="#cec7ba" stroke-width="1"/>
+<rect x="405" y="685" width="990" height="160" rx="14" fill="#f2eee5" stroke="#cec7ba" stroke-width="1"/>
 <text x="425" y="709" font-size="13" font-weight="bold" fill="#57534a">DATA AND INFRASTRUCTURE</text>
 <path d="M 1244 148 L 1244 200" fill="none" stroke="#625f59" stroke-width="1.4" marker-end="url(#arrow)"/>
 <rect x="1216.3" y="155" width="55.4" height="16" rx="3" fill="#f2eee5"/>
