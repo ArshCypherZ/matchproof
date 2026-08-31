@@ -4,25 +4,31 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  /* Small-type scale: nothing below 12px, sizes in rem so the root
+     scale (html font-size) and user browser settings carry through. */
+  --text-2xs: 0.75rem;
+  --text-2xs--line-height: calc(1 / 0.75);
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: calc(1 / 0.8125);
+  --text-sm: 0.9rem;
+  --text-sm--line-height: calc(1.25 / 0.9);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
+  --font-heading: var(--font-geist-sans);
+  --font-display: var(--font-geist-sans);
+  --font-serif: var(--font-instrument-serif), Georgia, serif;
+  --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-spring: cubic-bezier(0.22, 1.08, 0.36, 1);
+  --animate-enter-rise: enter-rise 240ms var(--ease-out-expo) both;
+  --animate-wave-pulse: wave-pulse 1.6s linear infinite;
+  --animate-capsule-pop: capsule-pop 240ms var(--ease-spring) both;
+  --animate-stamp-press: stamp-press 280ms var(--ease-spring) both;
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -50,7 +56,25 @@
   --color-provider-soft: var(--provider-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
-  --color-danger-soft: var(--danger-soft);
+  --color-signature: var(--signature);
+  --color-stamp: var(--stamp);
+  --color-on-ink-signature: var(--on-ink-signature);
+  --color-on-ink-provider: var(--on-ink-provider);
+  --color-on-ink-warning: var(--on-ink-warning);
+  --color-on-ink-destructive: var(--on-ink-destructive);
+  --color-scrim: var(--scrim);
+  --color-ticket: var(--ticket);
+  --color-ticket-ink: var(--ticket-ink);
+  --color-ticket-paper: var(--ticket-paper);
+  --color-scenario-1: var(--scenario-1);
+  --color-scenario-2: var(--scenario-2);
+  --color-scenario-3: var(--scenario-3);
+  --color-scenario-4: var(--scenario-4);
+  --color-scenario-5: var(--scenario-5);
+  --color-scenario-ink: var(--scenario-ink);
+  --color-scenario-ink-secondary: var(--scenario-ink-secondary);
+  --color-scenario-panel: var(--scenario-panel);
+  --color-scenario-panel-edge: var(--scenario-panel-edge);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -58,146 +82,199 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Printed panels (the failure-scenario cards): 22px, per DESIGN.md. */
+  --radius-panel: 1.375rem;
 }
 
-:root {
-  --background: #f3f6f4;
-  --foreground: #17201c;
-  --card: #fbfcfb;
-  --card-foreground: #17201c;
-  --popover: #ffffff;
-  --popover-foreground: #17201c;
-  --primary: #147d64;
-  --primary-foreground: #ffffff;
-  --secondary: #e9eeeb;
-  --secondary-foreground: #17201c;
-  --muted: #e9eeeb;
-  --muted-foreground: #52605a;
-  --accent: #dcefe8;
-  --accent-foreground: #0d624e;
-  --destructive: #b93845;
-  --border: #d5ddd8;
-  --input: #d5ddd8;
-  --ring: #147d64;
-  --chart-1: #147d64;
-  --chart-2: #305eff;
-  --chart-3: #a85d16;
-  --chart-4: #b93845;
-  --chart-5: #74817b;
-  --radius: 0.375rem;
-  --sidebar: #fbfcfb;
-  --sidebar-foreground: #17201c;
-  --sidebar-primary: #147d64;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e9eeeb;
-  --sidebar-accent-foreground: #17201c;
-  --sidebar-border: #d5ddd8;
-  --sidebar-ring: #147d64;
-  --canvas: #f3f6f4;
-  --surface: #fbfcfb;
-  --surface-raised: #ffffff;
-  --surface-subtle: #e9eeeb;
-  --ink-secondary: #52605a;
-  --ink-tertiary: #74817b;
-  --hairline: #d5ddd8;
-  --provider: #305eff;
-  --provider-soft: #e8edff;
-  --warning: #a85d16;
-  --warning-soft: #f8e9d8;
-  --danger-soft: #f7e1e4;
+:root,
+.light {
+  color-scheme: light;
+  --background: #f2eee5;
+  --foreground: #181715;
+  --card: #fbf8f1;
+  --card-foreground: #181715;
+  --popover: #fbf8f1;
+  --popover-foreground: #181715;
+  --primary: #181715;
+  --primary-foreground: #fbf8f1;
+  --secondary: #e8e1d5;
+  --secondary-foreground: #181715;
+  --muted: #e8e1d5;
+  --muted-foreground: #625f59;
+  --accent: #e8e1d5;
+  --accent-foreground: #181715;
+  --destructive: #c63f32;
+  --border: #cec7ba;
+  /* Control boundary at rest: darker than the hairline so empty fields stay
+     findable on paper (3.7:1 on canvas, 3.4:1 on surface). */
+  --input: #7f786c;
+  --ring: #e74432;
+  --radius: 0.5rem;
+  --canvas: #f2eee5;
+  --surface: #e8e1d5;
+  --surface-raised: #fbf8f1;
+  --surface-subtle: #eee8dd;
+  --ink-secondary: #625f59;
+  /* Kept at/above 4.5:1 on card, surface, and surface-subtle: it carries
+     small label text (loop-rail steps), not just hairline decoration. */
+  --ink-tertiary: #666158;
+  --hairline: #cec7ba;
+  --provider: #4f70ee;
+  --provider-soft: #c9dcff;
+  /* Warning text sits on warning-soft chips (judgment panel), so it
+     clears 4.5:1 against #f3dfc4, not just the page canvas. */
+  --warning: #824c0b;
+  --warning-soft: #f3dfc4;
+  --selection: #ffb0a5;
+  --selection-foreground: #171a18;
+  --signature: #e74432;
+  /* Dried-ink red for stamp lettering; darker than the signature accent
+     so the caps hold contrast as text on paper. */
+  --stamp: #b8301f;
+  /* Accent icons on inverted (ink-fill) chips: semantic accents are tuned
+     against paper, so the ink chip needs its own pair. Warning flips per
+     theme; the rest hold across both because the ink fill inverts with
+     them. */
+  --on-ink-signature: #e74432;
+  --on-ink-provider: #4f70ee;
+  --on-ink-warning: #e3a75e;
+  --on-ink-destructive: #c63f32;
+  /* Dialog scrim: warm ink, never cold black. */
+  --scrim: rgb(24 23 21 / 45%);
+  --cord: #5d5850;
+  --cord-socket: #e8e1d5;
+  --cord-handle: #181715;
+  --cord-highlight: #f2eee5;
+  --cord-glow: rgb(255 199 77 / 34%);
+  /* Fixed-composition palette for the demo ticket: a safety-yellow admit
+     ticket that keeps its own contrast pair in both themes. */
+  --ticket: #f1d87a;
+  --ticket-ink: #17201c;
+  --ticket-paper: #edf3ef;
+  /* Scenario cards: printed panels on fixed pastel stocks; the ink pair
+     stays constant so the cards read the same in light and dark themes. */
+  --scenario-1: #f2c84b;
+  --scenario-2: #63d8c9;
+  --scenario-3: #aea6ff;
+  --scenario-4: #c9ff73;
+  --scenario-5: #d7a5aa;
+  --scenario-ink: #181715;
+  --scenario-ink-secondary: #625f59;
+  --scenario-panel: #fbf8f1;
+  --scenario-panel-edge: rgb(0 0 0 / 10%);
+  --scenario-lift: 0 22px 45px rgb(0 0 0 / 0.16);
 }
 
 .dark {
-  --background: #111714;
-  --foreground: #edf3ef;
-  --card: #171f1b;
-  --card-foreground: #edf3ef;
-  --popover: #202923;
-  --popover-foreground: #edf3ef;
-  --primary: #54b89c;
-  --primary-foreground: #111714;
-  --secondary: #28332d;
-  --secondary-foreground: #edf3ef;
-  --muted: #28332d;
-  --muted-foreground: #b8c4bd;
-  --accent: #1e3c33;
-  --accent-foreground: #76c9b0;
-  --destructive: #ee7d88;
-  --border: #33413a;
-  --input: #33413a;
-  --ring: #54b89c;
-  --chart-1: #54b89c;
-  --chart-2: #75a3ff;
-  --chart-3: #e0a05d;
-  --chart-4: #ee7d88;
-  --chart-5: #8e9b94;
-  --sidebar: #171f1b;
-  --sidebar-foreground: #edf3ef;
-  --sidebar-primary: #54b89c;
-  --sidebar-primary-foreground: #111714;
-  --sidebar-accent: #28332d;
-  --sidebar-accent-foreground: #edf3ef;
-  --sidebar-border: #33413a;
-  --sidebar-ring: #54b89c;
-  --canvas: #111714;
-  --surface: #171f1b;
-  --surface-raised: #202923;
-  --surface-subtle: #28332d;
-  --ink-secondary: #b8c4bd;
-  --ink-tertiary: #8e9b94;
-  --hairline: #33413a;
-  --provider: #75a3ff;
-  --provider-soft: #202d54;
-  --warning: #e0a05d;
-  --warning-soft: #442f1d;
-  --danger-soft: #48242a;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #111714;
-    --foreground: #edf3ef;
-    --card: #171f1b;
-    --card-foreground: #edf3ef;
-    --popover: #202923;
-    --popover-foreground: #edf3ef;
-    --primary: #54b89c;
-    --primary-foreground: #111714;
-    --secondary: #28332d;
-    --secondary-foreground: #edf3ef;
-    --muted: #28332d;
-    --muted-foreground: #b8c4bd;
-    --accent: #1e3c33;
-    --accent-foreground: #76c9b0;
-    --destructive: #ee7d88;
-    --border: #33413a;
-    --input: #33413a;
-    --ring: #54b89c;
-    --canvas: #111714;
-    --surface: #171f1b;
-    --surface-raised: #202923;
-    --surface-subtle: #28332d;
-    --ink-secondary: #b8c4bd;
-    --ink-tertiary: #8e9b94;
-    --hairline: #33413a;
-    --provider: #75a3ff;
-    --provider-soft: #202d54;
-    --warning: #e0a05d;
-    --warning-soft: #442f1d;
-    --danger-soft: #48242a;
-  }
+  color-scheme: dark;
+  --background: #050505;
+  --foreground: #f1ede4;
+  /* Night ramp: the same desk with the lamp off. Each paper step keeps
+     the light theme's ~1.2:1 tonal separation so panel-inside-panel
+     reading survives without shadows. */
+  --card: #221f1b;
+  --card-foreground: #f1ede4;
+  --popover: #2c2924;
+  --popover-foreground: #f1ede4;
+  --primary: #f1ede4;
+  --primary-foreground: #050505;
+  --secondary: #221f1b;
+  --secondary-foreground: #f1ede4;
+  --muted: #2c2924;
+  --muted-foreground: #aaa399;
+  --accent: #2c2924;
+  --accent-foreground: #f1ede4;
+  --destructive: #ff8f82;
+  --border: #4a453f;
+  --input: #7d766c;
+  --ring: #e74432;
+  --radius: 0.5rem;
+  --canvas: #050505;
+  --surface: #171512;
+  --surface-raised: #2c2924;
+  --surface-subtle: #12110f;
+  --ink-secondary: #aaa399;
+  --ink-tertiary: #978f85;
+  --hairline: #4a453f;
+  --provider: #84adff;
+  --provider-soft: #18213d;
+  --warning: #e3a75e;
+  --warning-soft: #3b2918;
+  --selection: #ffb0a5;
+  --selection-foreground: #171a18;
+  --signature: #e74432;
+  --stamp: #ff6a54;
+  /* The ink chip inverts to light paper here, so warning darkens while
+     the other accents keep their light-theme values. */
+  --on-ink-signature: #e74432;
+  --on-ink-provider: #4f70ee;
+  --on-ink-warning: #824c0b;
+  --on-ink-destructive: #c63f32;
+  --scrim: rgb(5 5 5 / 60%);
+  --cord: #d9d1c5;
+  --cord-socket: #2c2924;
+  --cord-handle: #f1ede4;
+  --cord-highlight: #27241f;
+  --cord-glow: rgb(255 187 75 / 7%);
+  /* Fixed-composition palette for the demo ticket: a safety-yellow admit
+     ticket that keeps its own contrast pair in both themes. */
+  --ticket: #f1d87a;
+  --ticket-ink: #17201c;
+  --ticket-paper: #edf3ef;
+  /* Scenario cards: printed panels on fixed pastel stocks; the ink pair
+     stays constant so the cards read the same in light and dark themes. */
+  --scenario-1: #f2c84b;
+  --scenario-2: #63d8c9;
+  --scenario-3: #aea6ff;
+  --scenario-4: #c9ff73;
+  --scenario-5: #d7a5aa;
+  --scenario-ink: #181715;
+  --scenario-ink-secondary: #625f59;
+  --scenario-panel: #fbf8f1;
+  --scenario-panel-edge: rgb(0 0 0 / 10%);
+  --scenario-lift: 0 22px 45px rgb(0 0 0 / 0.16);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground antialiased;
-    min-width: 320px;
-  }
   html {
     @apply font-sans;
+    /* ~17px at the browser default; percentage keeps the user's own
+       font-size preference working. */
+    font-size: 106.25%;
+    /* Notched phones: keep fixed UI off the display cutouts. */
+    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    /* The 320px floor only applies when the viewport can hold it: forcing
+       the minimum on a narrower screen (a foldable cover display, or a
+       notched screen whose insets eat into 320px) pushes the page wide and
+       puts a horizontal scrollbar under the operator's thumb. */
+    min-width: min(320px, 100%);
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-old(root) {
+    z-index: 1;
+  }
+
+  ::view-transition-new(root) {
+    z-index: 2;
+  }
+
+  ::selection {
+    background: var(--selection);
+    color: var(--selection-foreground);
   }
 }
 
@@ -208,7 +285,268 @@
   }
 
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+    /* The same ring the control primitives draw: 3px signature red at half
+       opacity, no offset — one focus language across links and controls. */
+    @apply outline-none focus-visible:ring-3 focus-visible:ring-ring/50;
+  }
+
+  /* Checkbox touch floor: 16px boxes starve touch aim, so coarse-pointer
+     devices get a bigger visual box. */
+  .check-target {
+    @apply size-4 cursor-pointer accent-primary;
+  }
+
+  @media (pointer: coarse) {
+    .check-target {
+      width: 1.375rem;
+      height: 1.375rem;
+    }
+  }
+
+  /* Checkbox hit area: the inked box stays modest on every pointer, but the
+     clickable label around it grows to the 44px aim floor on touch. */
+  .check-hit {
+    @apply inline-flex cursor-pointer items-center justify-center;
+  }
+
+  @media (pointer: coarse) {
+    .check-hit {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
+  .page-rail {
+    width: 100%;
+    max-width: 52.5rem;
+    margin-inline: auto;
+    padding-inline: max(1.25rem, env(safe-area-inset-left))
+      max(1.25rem, env(safe-area-inset-right));
+  }
+
+  .workspace-rail {
+    width: 100%;
+    max-width: 100rem;
+    margin-inline: auto;
+    padding-inline: max(1.25rem, env(safe-area-inset-left))
+      max(1.25rem, env(safe-area-inset-right));
+  }
+
+  /* Fixed-overlay reservations. These must be declared AFTER the rails
+     above: the rails set padding-inline, and a same-specificity
+     Tailwind utility (pr-16, xl:pl-36) compiles earlier in the sheet,
+     so the rail would silently swallow the reservation and the fixed
+     element would collide with page content. */
+  .reserve-cord {
+    padding-inline-end: 4rem;
+  }
+
+  @media (min-width: 80rem) {
+    .reserve-section-rail {
+      padding-inline-start: 9rem;
+    }
+  }
+
+  .theme-pull-cord {
+    position: absolute;
+    z-index: 40;
+    inset-block-start: 0;
+    inset-inline-end: 0.25rem;
+    overflow: visible;
+    color: var(--cord);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .theme-pull-cord svg {
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .pull-cord-glow {
+    fill: var(--cord-glow);
+    filter: blur(9px);
+  }
+
+  .pull-cord-socket {
+    fill: var(--cord-socket);
+    stroke: var(--border);
+    stroke-width: 1;
+  }
+
+  .pull-cord-line {
+    stroke: var(--cord);
+    opacity: 0.72;
+  }
+
+  .pull-cord-bead {
+    fill: var(--cord-handle);
+    filter: drop-shadow(0 2px 5px rgb(0 0 0 / 18%));
+  }
+
+  .pull-cord-bead-highlight {
+    fill: var(--cord-highlight);
+    opacity: 0.74;
+  }
+
+  .pull-cord-control {
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    cursor: grab;
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  .pull-cord-control:active {
+    cursor: grabbing;
+  }
+
+  .pull-cord-control:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    background: color-mix(in srgb, var(--ring) 10%, transparent);
+  }
+
+  .scenario-card {
+    transition: transform 150ms var(--ease-out-expo);
+  }
+
+  .scenario-card__panel {
+    transition: transform 180ms var(--ease-out-expo);
+  }
+
+  /* Height-reveal for expandable regions: the row track carries the height,
+     an overflow-hidden child clips it. Collapsed content is visibility-hidden
+     so it stays out of the tab order and the accessibility tree. */
+  .reveal {
+    display: grid;
+    grid-template-rows: 0fr;
+    visibility: hidden;
+    transition:
+      grid-template-rows 240ms var(--ease-out-expo),
+      visibility 0ms 240ms;
+  }
+
+  .reveal[data-open="true"] {
+    grid-template-rows: 1fr;
+    visibility: visible;
+    transition:
+      grid-template-rows 240ms var(--ease-out-expo),
+      visibility 0ms 0ms;
+  }
+
+  .reveal > * {
+    min-height: 0;
+  }
+
+  /* Loop-rail connector: the fill layer sweeps in from the left when a
+     recovery step completes, and retracts faster than it arrives. */
+  .loop-segment {
+    position: relative;
+  }
+
+  .loop-segment::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--primary);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 140ms var(--ease-out-expo);
+  }
+
+  .loop-segment[data-filled="true"]::after {
+    transform: scaleX(1);
+    transition: transform 300ms var(--ease-out-expo);
+  }
+
+  /* Ledger stamp for a terminal state: serif caps, slight rotation, ink
+     color. The status badge beside it carries the accessible label. */
+  .close-stamp {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem 0.1875rem;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    font-family: var(--font-instrument-serif), Georgia, serif;
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    transform: rotate(var(--stamp-angle, -3deg));
+    user-select: none;
+  }
+
+  /* The accountant's double rule under a closed book's final totals. */
+  .ledger-close-rule {
+    position: relative;
+    border-top: 1px solid var(--foreground);
+  }
+
+  .ledger-close-rule::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 3px;
+    border-top: 1px solid var(--foreground);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .scenario-card:hover {
+    transform: translate3d(0, -6px, 0) !important;
+  }
+
+  .scenario-card:hover .scenario-card__panel {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes wave-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes capsule-pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes stamp-press {
+  from {
+    opacity: 0;
+    transform: rotate(var(--stamp-angle, -3deg)) scale(1.55);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(var(--stamp-angle, -3deg)) scale(1);
   }
 }
 
@@ -220,5 +558,20 @@
     transition-duration: 120ms !important;
     animation-duration: 120ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  .reveal {
+    transition-delay: 120ms;
+  }
+}
+
+/* Ring-based focus styles compile to box-shadow, which forced-colors
+   (Windows High Contrast) suppresses entirely; author-set
+   outline-style: none would be respected, so restore a system-color
+   outline for that mode. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
   }
 }

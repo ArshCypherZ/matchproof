@@ -1,4 +1,4 @@
-import { desc, eq, isNull, sql } from "drizzle-orm";
+import { desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -226,6 +226,14 @@ export class PostgresIncidentRepository implements IncidentRepository {
       .where(eq(payments.paymentId, id));
     return row ? asPayment(row) : undefined;
   }
+  async paymentsFor(paymentIds: string[]) {
+    if (!paymentIds.length) return [];
+    const rows = await this.db
+      .select()
+      .from(payments)
+      .where(inArray(payments.paymentId, paymentIds));
+    return rows.map(asPayment);
+  }
   async updatePayment(id: string, state: PaymentState) {
     await this.db
       .update(payments)
@@ -403,6 +411,15 @@ export class PostgresIncidentRepository implements IncidentRepository {
       .orderBy(incidentProgress.sequence);
     return rows.map(asProgress);
   }
+  async progressFor(incidentIds: string[]) {
+    if (!incidentIds.length) return [];
+    const rows = await this.db
+      .select()
+      .from(incidentProgress)
+      .where(inArray(incidentProgress.incidentId, incidentIds))
+      .orderBy(incidentProgress.sequence);
+    return rows.map(asProgress);
+  }
   async latestProgress(incidentId: string) {
     const [row] = await this.db
       .select()
@@ -508,6 +525,9 @@ export class PostgresIncidentRepository implements IncidentRepository {
             paymentId: bundle.payment_id,
             idempotencyKey: bundle.idempotency_key,
             bundle,
+            ...(input.createIncident.tenantId
+              ? { tenantId: input.createIncident.tenantId }
+              : {}),
           })
           .onConflictDoNothing();
         await tx

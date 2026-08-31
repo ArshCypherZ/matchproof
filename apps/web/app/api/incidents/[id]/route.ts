@@ -4,6 +4,10 @@ import {
   withStore,
   incidentDto,
 } from "../../../../lib/incidents";
+import { executeApprovedRecovery } from "../../../../../../src/incident_commander/approved-recovery";
+import { sharedDatabase } from "../../../../../../src/db/client";
+import { PostgresMerchantPlatformAdapter } from "../../../../../../src/db/postgres-merchant-platform-adapter";
+import { RazorpayProviderAfterstateAdapter } from "../../../../../../src/incident_commander/afterstate-verifier";
 
 export const dynamic = "force-dynamic";
 
@@ -31,40 +35,55 @@ const actionSchema = z
   .object({ reason: z.string().min(1).max(500).optional() })
   .strict();
 
-async function operatorAction(
-  request: Request,
+// Approve executes one bounded merchant repair through the rule-based
+// policy gate and records the durable outcome for the incident.
+async function approveIncident(
   id: string,
-  action: "approve" | "escalate",
+  tenantId: string,
+  actor: string,
+  reason: string | undefined,
 ) {
-  const { tenantId, actor } = requestContext(request);
-  const body = actionSchema.safeParse(await request.json().catch(() => ({})));
-  if (!body.success)
-    return Response.json(
-      { error: "invalid_body", issues: body.error.issues },
-      { status: 400 },
-    );
   const result = await withStore(tenantId, async (store) => {
     const bundle = await store.incident(id);
     if (!bundle || (await store.incidentTenant(id)) !== tenantId) return null;
-    await store.audit(`operator_${action}`, {
-      tenant_id: tenantId,
+    const connection = sharedDatabase();
+    return await executeApprovedRecovery({
+      store,
+      incidentId: id,
+      tenantId,
       actor,
-      incident_id: id,
-      payment_id: bundle.payment_id,
-      action,
-      approval_state: action === "approve" ? "approved" : "escalated",
-      reason: body.data.reason ?? "operator action",
+      ...(reason ? { reason } : {}),
+      merchant: new PostgresMerchantPlatformAdapter(connection.db),
+      provider: new RazorpayProviderAfterstateAdapter(),
     });
-    if (action === "escalate")
-      await store.setProgress(id, "escalate", "completed", {
-        actor,
-        reason: body.data.reason ?? "operator escalation",
-      });
-    return { incident_id: id, action, recorded: true };
   });
-  return result
-    ? Response.json(result)
-    : Response.json({ error: "not_found" }, { status: 404 });
+  if (!result) return Response.json({ error: "not_found" }, { status: 404 });
+  switch (result.status) {
+    case "not_found":
+      return Response.json({ error: "not_found" }, { status: 404 });
+    case "nothing_to_approve":
+      return Response.json(
+        {
+          error: "nothing_to_approve",
+          reason: result.reason,
+          resolution: result.resolution,
+          ambiguity_reasons: result.ambiguity_reasons,
+        },
+        { status: 409 },
+      );
+    case "blocked":
+      return Response.json(
+        { error: "blocked", reason: result.reason },
+        { status: 409 },
+      );
+    case "executed":
+      return Response.json({
+        incident_id: id,
+        action: "approve",
+        outcome: result.outcome.status,
+        afterstate: result.afterstate.status,
+      });
+  }
 }
 
 export async function POST(
@@ -72,13 +91,16 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  return operatorAction(request, id, "approve");
-}
-
-export async function PUT(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
-  return operatorAction(request, id, "escalate");
+  const { tenantId, actor } = requestContext(request);
+  const body = actionSchema.safeParse(await request.json().catch(() => ({})));
+  if (!body.success)
+    return Response.json(
+      {
+        error: "invalid_body",
+        reason:
+          "Send a JSON body with an optional reason of at most 500 characters.",
+      },
+      { status: 400 },
+    );
+  return approveIncident(id, tenantId, actor, body.data.reason);
 }

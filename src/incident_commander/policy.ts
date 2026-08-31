@@ -98,8 +98,9 @@ export function evaluate(
   if (
     action === "reconcile_internal_state" &&
     (reconstruction.ambiguity_reasons.length ||
-      !VerifiedPaymentStateSchema.safeParse(reconstruction.current_state)
-        .success ||
+      (!VerifiedPaymentStateSchema.safeParse(reconstruction.current_state)
+        .success &&
+        reconciliation?.resolution !== "reconcile_internal_state") ||
       (reconciliation !== undefined &&
         (!reconciliation.deterministic_resolution ||
           reconciliation.resolution !== "reconcile_internal_state" ||

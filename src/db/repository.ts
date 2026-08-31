@@ -125,6 +125,7 @@ export type WebhookProcessingInput = {
   createIncident: {
     incidentId: string;
     idempotencyKey: string;
+    tenantId?: string;
   };
 };
 
@@ -164,6 +165,7 @@ export interface IncidentRepository {
   incident(id: string, secret?: string): Promise<IncidentBundle | null>;
   incidentByPaymentId(paymentId: string): Promise<IncidentBundle | null>;
   payment(id: string): Promise<PaymentRecord | undefined>;
+  paymentsFor(paymentIds: string[]): Promise<PaymentRecord[]>;
   updatePayment(id: string, state: string): Promise<void>;
   recovery(key: string): Promise<RecoveryRecord | undefined>;
   recoveryAttempt(key: string): Promise<RecoveryAttempt | undefined>;
@@ -192,6 +194,7 @@ export interface IncidentRepository {
     details: unknown,
   ): Promise<void>;
   progress(incidentId: string): Promise<ProgressRecord[]>;
+  progressFor(incidentIds: string[]): Promise<ProgressRecord[]>;
   latestProgress(incidentId: string): Promise<ProgressRecord | undefined>;
   ingestWebhook(
     event: WebhookInput,

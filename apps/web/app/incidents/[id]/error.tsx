@@ -1,21 +1,29 @@
 "use client";
+import { useEffect } from "react";
 import { InlineNotice } from "@/components/feedback/inline-notice";
+
 export default function Error({
-  reset,
+  error,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
   return (
     <main
       id="main-content"
-      className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8"
+      tabIndex={-1}
+      className="workspace-rail py-10 sm:py-14"
     >
       <InlineNotice
-        title="Incident workbench unavailable"
-        body="The latest incident read failed. No action was performed."
+        title="Exception workbench unavailable"
+        body="The latest exception read failed. No action was performed."
         actionLabel="Retry workbench"
-        onAction={reset}
+        onAction={retry}
       />
     </main>
   );

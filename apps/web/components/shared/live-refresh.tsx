@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Radio, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Pause, Radio, RefreshCw, WifiOff } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
-type RefreshState = "live" | "paused" | "retrying";
+type Health = "live" | "retrying";
 
 export function LiveRefresh({
   endpoint,
@@ -17,18 +18,42 @@ export function LiveRefresh({
 }) {
   const router = useRouter();
   const fingerprint = useRef<string | null>(null);
-  const [state, setState] = useState<RefreshState>("live");
+  const [paused, setPaused] = useState(false);
+  const [health, setHealth] = useState<Health>("live");
   const [announcement, setAnnouncement] = useState("");
+  const [retryWait, setRetryWait] = useState(0);
+
+  const pausedRef = useRef(false);
+  const healthRef = useRef<Health>("live");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const announceTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const stoppedRef = useRef(false);
+  const pollNowRef = useRef<() => void>(() => {});
+
+  const announce = useCallback((message: string) => {
+    setAnnouncement(message);
+    // A trailing clear lets the same state recur (pause → live → pause)
+    // announce again on the polite live region.
+    if (announceTimerRef.current) clearTimeout(announceTimerRef.current);
+    announceTimerRef.current = setTimeout(() => setAnnouncement(""), 1200);
+  }, []);
 
   useEffect(() => {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
-    const poll = async () => {
-      if (document.hidden) {
-        setState("paused");
-        return;
-      }
+    stoppedRef.current = false;
+
+    const clearTimer = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    };
+
+    const backoffDelay = () => Math.min(interval * 2 ** failures, 30000);
+
+    const runPoll = async () => {
+      if (document.hidden) return;
+      let ok = false;
       try {
         const response = await fetch(endpoint, { cache: "no-store" });
         if (!response.ok) throw new Error("refresh failed");
@@ -43,47 +68,119 @@ export function LiveRefresh({
         }
         if (fingerprint.current && fingerprint.current !== next) {
           router.refresh();
-          setAnnouncement(`${label} updated`);
+          announce(`${label} updated`);
         }
         fingerprint.current = next;
+        ok = true;
         failures = 0;
-        setState("live");
-        if (!stopped) timer = setTimeout(poll, interval);
+        setRetryWait(0);
+        if (healthRef.current === "retrying") announce("Live updates resumed");
+        healthRef.current = "live";
+        setHealth("live");
       } catch {
         failures += 1;
-        setState("retrying");
-        if (!stopped)
-          timer = setTimeout(poll, Math.min(interval * 2 ** failures, 30000));
+        const wait = backoffDelay();
+        setRetryWait(wait);
+        if (healthRef.current === "live") announce("Reconnecting");
+        healthRef.current = "retrying";
+        setHealth("retrying");
       }
+      if (stoppedRef.current || pausedRef.current || document.hidden) return;
+      const delay = ok ? interval : backoffDelay();
+      timerRef.current = setTimeout(() => void runPoll(), delay);
     };
+
+    pollNowRef.current = () => {
+      clearTimer();
+      // A manual refresh says what it found even when nothing changed, so
+      // the button press always produces feedback.
+      const before = fingerprint.current;
+      return runPoll().then(() => {
+        if (fingerprint.current === before) announce("No changes");
+      });
+    };
+
     const handleVisibility = () => {
-      if (timer) clearTimeout(timer);
-      if (document.hidden) setState("paused");
-      else void poll();
+      clearTimer();
+      if (!document.hidden && !pausedRef.current) void runPoll();
     };
     document.addEventListener("visibilitychange", handleVisibility);
-    void poll();
+
+    if (!pausedRef.current && !document.hidden) void runPoll();
+
     return () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
+      stoppedRef.current = true;
+      clearTimer();
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [endpoint, interval, label, router]);
+  }, [endpoint, interval, label, router, paused, announce]);
 
-  const Icon = state === "retrying" ? WifiOff : Radio;
+  useEffect(
+    () => () => {
+      if (announceTimerRef.current) clearTimeout(announceTimerRef.current);
+    },
+    [],
+  );
+
+  const togglePause = () => {
+    if (pausedRef.current) {
+      // Clear any stale retry state so the resume announcement stays single.
+      healthRef.current = "live";
+      setHealth("live");
+      setRetryWait(0);
+      pausedRef.current = false;
+      setPaused(false);
+      announce("Live updates resumed");
+    } else {
+      pausedRef.current = true;
+      setPaused(true);
+      announce("Updates paused");
+    }
+  };
+
+  const Icon = paused ? Pause : health === "retrying" ? WifiOff : Radio;
+  const iconTone = paused
+    ? "text-muted-foreground"
+    : health === "retrying"
+      ? "text-warning"
+      : "text-primary";
+  const statusText = paused
+    ? "Updates paused"
+    : health === "retrying"
+      ? "Reconnecting"
+      : "Live updates";
+
   return (
     <>
-      <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon
-          aria-hidden="true"
-          className={`size-3.5 ${state === "live" ? "text-primary" : "text-warning"}`}
-        />
-        {state === "live"
-          ? "Live updates"
-          : state === "paused"
-            ? "Updates paused"
-            : "Reconnecting"}
-      </span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Icon aria-hidden="true" className={`size-3.5 ${iconTone}`} />
+          {statusText}
+          {health === "retrying" && !paused ? (
+            <span className="font-data text-2xs">
+              · {Math.max(1, Math.round(retryWait / 1000))}s
+            </span>
+          ) : null}
+        </span>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={togglePause}
+          className="font-data uppercase tracking-[0.08em]"
+        >
+          {paused ? "Resume" : "Pause"}
+        </Button>
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={() => pollNowRef.current()}
+          data-icon="inline-start"
+          className="font-data uppercase tracking-[0.08em]"
+        >
+          <RefreshCw aria-hidden="true" className="size-3.5" />
+          Refresh
+        </Button>
+      </div>
       <span className="sr-only" aria-live="polite">
         {announcement}
       </span>

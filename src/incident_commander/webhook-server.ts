@@ -14,48 +14,55 @@ function loadLocalEnv() {
   }
 }
 
-loadLocalEnv();
-const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-if (!secret) throw new Error("RAZORPAY_WEBHOOK_SECRET must be configured");
-const processorSecret = process.env.PROCESSOR_WEBHOOK_SECRET;
-if (!processorSecret)
-  throw new Error("PROCESSOR_WEBHOOK_SECRET must be configured");
+async function main() {
+  loadLocalEnv();
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!secret) throw new Error("RAZORPAY_WEBHOOK_SECRET must be configured");
+  const processorSecret = process.env.PROCESSOR_WEBHOOK_SECRET;
+  if (!processorSecret)
+    throw new Error("PROCESSOR_WEBHOOK_SECRET must be configured");
 
-const port = Number(process.env.PORT ?? "9999");
+  const port = Number(process.env.PORT ?? "9999");
 
-const statePath = "postgresql";
-const store = new IncidentStore(statePath, false, processorSecret);
-await store.initialize();
-const inbox = new RazorpayWebhookInbox(store, {
-  evidenceGatherer: new EvidenceGatherer(),
-});
-const queues = process.env.REDIS_URL ? createQueues() : undefined;
-const server = createRazorpayWebhookServer(inbox, {
-  webhookSecret: secret,
-  processorSecret,
-  ...(queues
-    ? {
-        dispatcher: {
-          enqueueIncident: (eventId: string) =>
-            addWebhookIncidentJob(queues, eventId),
-        },
-      }
-    : {}),
-});
+  const statePath = "postgresql";
+  const store = new IncidentStore(statePath, false, processorSecret);
+  await store.initialize();
+  const inbox = new RazorpayWebhookInbox(store, {
+    evidenceGatherer: new EvidenceGatherer(),
+  });
+  const queues = process.env.REDIS_URL ? createQueues() : undefined;
+  const server = createRazorpayWebhookServer(inbox, {
+    webhookSecret: secret,
+    processorSecret,
+    ...(queues
+      ? {
+          dispatcher: {
+            enqueueIncident: (eventId: string) =>
+              addWebhookIncidentJob(queues, eventId),
+          },
+        }
+      : {}),
+  });
 
-server.listen(port, "0.0.0.0", () => {
-  console.log(
-    JSON.stringify({
-      status: "listening",
-      port,
-      path: "/webhooks/razorpay",
-      statePath,
-    }),
-  );
-});
+  server.listen(port, "0.0.0.0", () => {
+    console.log(
+      JSON.stringify({
+        status: "listening",
+        port,
+        path: "/webhooks/razorpay",
+        statePath,
+      }),
+    );
+  });
 
-function shutdown() {
-  server.close(() => void Promise.all([store.close(), queues?.close()]));
+  function shutdown() {
+    server.close(() => void Promise.all([store.close(), queues?.close()]));
+  }
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
 }
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

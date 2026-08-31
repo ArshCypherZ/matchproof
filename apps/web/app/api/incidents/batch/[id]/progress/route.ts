@@ -1,4 +1,8 @@
-import { requestContext, withStore } from "../../../../../../lib/incidents";
+import {
+  batchEventFields,
+  requestContext,
+  withStore,
+} from "../../../../../../lib/incidents";
 export const dynamic = "force-dynamic";
 export async function GET(
   request: Request,
@@ -12,12 +16,12 @@ export async function GET(
       (event) =>
         event.event_type === "batch_started" &&
         event.payload.tenant_id === tenantId &&
-        (event.payload.details as { batch_id?: string }).batch_id === id,
+        batchEventFields(event.payload).batchId === id,
     );
     if (!batch) return null;
-    const detail = batch.payload.details as { incident_ids: string[] };
+    const incidentIds = batchEventFields(batch.payload).incidentIds;
     const states = await Promise.all(
-      detail.incident_ids.map(async (incidentId) => {
+      incidentIds.map(async (incidentId) => {
         const progress = await store.progress(incidentId);
         if (
           progress.some(
@@ -32,19 +36,24 @@ export async function GET(
           )
         )
           return "processed" as const;
+        const latest = [...progress].sort(
+          (left, right) => right.sequence - left.sequence,
+        )[0];
+        if (latest?.status.startsWith("failed:")) return "failed" as const;
         return "pending" as const;
       }),
     );
     const processed = states.filter((state) => state === "processed").length;
     const escalated = states.filter((state) => state === "escalated").length;
+    const failed = states.filter((state) => state === "failed").length;
     return {
       batch_id: id,
       total: states.length,
       processed,
-      pending: states.length - processed - escalated,
-      failed: 0,
+      pending: states.length - processed - escalated - failed,
+      failed,
       escalated,
-      resumable: true,
+      resumable: processed + escalated < states.length,
     };
   });
   return result

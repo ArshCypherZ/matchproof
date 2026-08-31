@@ -1,38 +1,53 @@
-import { syntheticEvaluationMetrics as metrics } from "@/lib/metrics";
+"use client";
 
-export function OutcomeDistribution() {
-  const items = [
-    {
-      label: "Automatic",
-      value: metrics.automatic_count,
-      className: "bg-primary",
-    },
-    {
-      label: "Runbook",
-      value: metrics.runbook_count,
-      className: "bg-provider",
-    },
-    {
-      label: "No action",
-      value: metrics.no_action_count,
-      className: "bg-ink-tertiary",
-    },
-    {
-      label: "Ambiguous",
-      value: metrics.ambiguous_count,
-      className: "bg-warning",
-    },
-  ];
+import { useEffect, useRef } from "react";
+
+type OutcomeItem = {
+  label: string;
+  value: number;
+  className: string;
+};
+
+export function OutcomeDistribution({ items }: { items: OutcomeItem[] }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (query.matches) return;
+    const segments = Array.from(
+      barRef.current?.querySelectorAll<HTMLElement>("[data-outcome-segment]") ??
+        [],
+    );
+    const animations = segments.map((segment, index) =>
+      segment.animate(
+        [
+          { opacity: 0.35, transform: "scaleX(0.01)" },
+          { opacity: 1, transform: "scaleX(1)" },
+        ],
+        {
+          duration: 500,
+          delay: index * 70,
+          // Literal form of --ease-out-expo; WAAPI takes no var() here.
+          easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+          fill: "backwards",
+        },
+      ),
+    );
+    return () => animations.forEach((animation) => animation.cancel());
+  }, []);
+
   return (
     <section aria-labelledby="outcome-heading">
-      <h2 id="outcome-heading" className="text-base font-semibold">
-        Outcome distribution
-      </h2>
+      <div className="flex items-baseline gap-3">
+        <span className="font-data text-2xs text-muted-foreground">04</span>
+        <h3 id="outcome-heading" className="text-base font-semibold">
+          Outcome distribution
+        </h3>
+      </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Categories report the current deterministic baseline and may overlap by
-        evaluation definition.
+        One benchmark case can appear in more than one outcome category.
       </p>
       <div
+        ref={barRef}
         className="mt-5 flex h-4 overflow-hidden rounded-sm bg-surface-subtle"
         aria-hidden="true"
       >
@@ -41,10 +56,19 @@ export function OutcomeDistribution() {
           .map((item) => (
             <span
               key={item.label}
-              className={item.className}
+              data-outcome-segment
+              className={`${item.className} origin-left`}
               style={{ flexGrow: item.value }}
             />
           ))}
+      </div>
+      <div className="mt-2 grid grid-cols-12 gap-1" aria-hidden="true">
+        {Array.from({ length: 12 }, (_, index) => (
+          <span
+            key={index}
+            className={`h-1 border-l border-border ${index % 3 === 0 ? "border-l-foreground" : ""}`}
+          />
+        ))}
       </div>
       <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
         {items.map((item) => (

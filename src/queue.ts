@@ -27,7 +27,7 @@ const retryOptions: JobsOptions = {
   attempts: 5,
   backoff: { type: "exponential", delay: 1_000 },
   removeOnComplete: { age: 86_400, count: 10_000 },
-  removeOnFail: false,
+  removeOnFail: { age: 604_800, count: 10_000 },
 };
 
 export function createQueueConnection(options: QueueConnectionOptions = {}) {
@@ -131,15 +131,30 @@ export function createQueueWorker<T extends QueueJobData>(
     autorun: true,
   } satisfies WorkerOptions);
   if (options.deadLetter) {
-    worker.on("failed", (job, error) => {
-      if (job && job.attemptsMade >= (job.opts.attempts ?? 1))
-        void publishDeadLetter(
+    worker.on("failed", async (job, error) => {
+      if (!job || job.attemptsMade < (job.opts.attempts ?? 1)) return;
+      try {
+        await publishDeadLetter(
           { deadLetter: options.deadLetter! },
           name,
           job.id ?? job.name,
           job.data,
           error,
         );
+      } catch (publishError) {
+        console.log(
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            event: "dead_letter_publish_failed",
+            queue: name,
+            job_id: job.id ?? job.name,
+            error:
+              publishError instanceof Error
+                ? publishError.message
+                : String(publishError),
+          }),
+        );
+      }
     });
   }
   return {

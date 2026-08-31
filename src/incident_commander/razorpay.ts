@@ -212,11 +212,30 @@ export function verifyRazorpayWebhookSignature(
 // Short alias for web frameworks and existing integrations.
 export const verifyWebhookSignature = verifyRazorpayWebhookSignature;
 
+export type WebhookFreshnessOptions = {
+  /** Allowed age of the event in seconds; 0 disables the check. */
+  toleranceSeconds?: number;
+  /** Clock in epoch seconds, injectable for tests. */
+  now?: () => number;
+};
+
+const DEFAULT_WEBHOOK_TOLERANCE_SECONDS = 300;
+
+function toleranceSeconds(env: NodeJS.ProcessEnv) {
+  const raw = env.RAZORPAY_WEBHOOK_TOLERANCE_SECONDS;
+  if (raw === undefined || raw === "") return DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0
+    ? parsed
+    : DEFAULT_WEBHOOK_TOLERANCE_SECONDS;
+}
+
 /** Authenticate first, then parse a Razorpay webhook event. */
 export function parseVerifiedRazorpayWebhook(
   rawBody: string | Buffer,
   signature: string,
   webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET,
+  options: WebhookFreshnessOptions = {},
 ) {
   if (!verifyRazorpayWebhookSignature(rawBody, signature, webhookSecret))
     throw new RazorpayWebhookVerificationError(
@@ -240,5 +259,15 @@ export function parseVerifiedRazorpayWebhook(
     throw new RazorpayWebhookVerificationError(
       "Razorpay webhook event has an invalid shape",
     );
-  return RazorpayWebhookBodyEnvelopeResponseSchema.parse(event);
+  const envelope = RazorpayWebhookBodyEnvelopeResponseSchema.parse(event);
+  // Replay protection: a valid signature on a stale event is still a replay.
+  const tolerance = options.toleranceSeconds ?? toleranceSeconds(process.env);
+  if (tolerance > 0 && envelope.created_at !== undefined) {
+    const now = (options.now ?? (() => Math.floor(Date.now() / 1000)))();
+    if (envelope.created_at < now - tolerance)
+      throw new RazorpayWebhookVerificationError(
+        `Razorpay webhook event is older than the ${tolerance}-second acceptance window`,
+      );
+  }
+  return envelope;
 }

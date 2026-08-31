@@ -1,9 +1,19 @@
 import type { Metadata } from "next";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
-import { syntheticEvaluationMetrics as metrics } from "@/lib/metrics";
+import Link from "next/link";
+import { headers } from "next/headers";
+import { AlertTriangle, ArrowRight, ShieldCheck } from "lucide-react";
+import {
+  syntheticEvaluationMetrics as metrics,
+  liveTenantMetrics,
+} from "@/lib/metrics";
+import { requestContext } from "@/lib/incidents";
 import { SourceBadge } from "@/components/shared/source-badge";
+import { LiveRefresh } from "@/components/shared/live-refresh";
 import { MetricBand } from "@/components/metrics/metric-band";
 import { OutcomeDistribution } from "@/components/metrics/outcome-distribution";
+import { formatAge } from "@/components/shared/format";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Metrics" };
 const percent = (value: number) =>
@@ -12,105 +22,240 @@ const percent = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-export default function MetricsPage() {
-  const source = `${metrics.source}, n=${metrics.denominator}`;
+function closureTime(value: number | null) {
+  return value === null ? "No closures yet" : formatAge(value);
+}
+
+export default async function MetricsPage() {
+  const headerList = await headers();
+  const { tenantId } = requestContext(headerList);
+  const measured = await liveTenantMetrics(tenantId);
   return (
     <main
       id="main-content"
-      className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8"
+      tabIndex={-1}
+      className="workspace-rail py-10 sm:py-14"
     >
-      <div className="border-b border-border pb-5">
-        <div className="mb-3">
-          <SourceBadge source="synthetic_evaluation" />
-        </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Metrics</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Measured baseline quality, closure coverage, and unsafe behavior
-          counts.
-        </p>
-      </div>
-      <div className="mt-7 grid gap-x-14 gap-y-10 lg:grid-cols-2">
-        <section aria-labelledby="classification-heading">
-          <h2
-            id="classification-heading"
-            className="mb-6 text-base font-semibold"
-          >
-            Classification
-          </h2>
-          <div className="grid gap-8 sm:grid-cols-2">
-            <MetricBand
-              value={percent(metrics.incident_classification_accuracy)}
-              label="Incident classification accuracy"
-              source={source}
-              tone="safe"
-            />
-            <MetricBand
-              value={metrics.incident_classification_macro_f1.toFixed(2)}
-              label="Classification macro F1"
-              source={source}
-              tone="safe"
-            />
+      <div className="flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="mb-3">
+            <SourceBadge source="measured_live" />
           </div>
-        </section>
-        <section aria-labelledby="correlation-heading">
-          <h2 id="correlation-heading" className="mb-6 text-base font-semibold">
-            Correlation
-          </h2>
-          <MetricBand
-            value={percent(metrics.exact_payment_order_matching_accuracy)}
-            label="Exact payment and order match"
-            source={source}
-            tone="warning"
-            note="Strong incident classification does not compensate for weak identity correlation."
-          />
-        </section>
-        <section aria-labelledby="closure-heading">
-          <h2 id="closure-heading" className="mb-6 text-base font-semibold">
-            Closure and safety
-          </h2>
+          <h1 className="font-display text-4xl font-medium tracking-tight sm:text-5xl">
+            Metrics
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+            Current exception outcomes and the offline benchmark used to check
+            controller quality.
+          </p>
+        </div>
+        <LiveRefresh endpoint="/api/metrics" label="Metrics" />
+      </div>
+      <section
+        aria-labelledby="measured-heading"
+        className="mt-10 grid gap-x-14 gap-y-10 lg:grid-cols-2"
+      >
+        <div className="lg:col-span-2">
+          <div className="mb-7 flex items-baseline gap-3">
+            <span className="font-data text-2xs text-muted-foreground">
+              Live
+            </span>
+            <h2 id="measured-heading" className="text-lg font-semibold">
+              Measured outcomes
+            </h2>
+          </div>
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             <MetricBand
-              value={percent(metrics.afterstate_verification_coverage)}
-              label="Afterstate coverage"
-              source={source}
-              tone="warning"
+              value={String(measured.total)}
+              label="Exceptions recorded"
+              tone="default"
             />
             <MetricBand
               value={
-                metrics.duplicate_action_prevention_count !== null
-                  ? String(metrics.duplicate_action_prevention_count)
-                  : "Unavailable"
+                measured.repair_success_rate === null
+                  ? "No closures yet"
+                  : percent(measured.repair_success_rate)
               }
-              label="Duplicate actions prevented"
-              source={source}
+              label="Repair success"
+              tone="safe"
+              note="Verified exceptions out of all exceptions with a completed outcome."
+            />
+            <MetricBand
+              value={
+                measured.afterstate_verified_share === null
+                  ? "No repairs yet"
+                  : percent(measured.afterstate_verified_share)
+              }
+              label="Post-action verification"
               tone="safe"
             />
             <MetricBand
-              value={String(metrics.unsafe_recommendations)}
-              label="Unsafe recommendations"
-              source={source}
+              value={closureTime(measured.median_time_to_close_seconds)}
+              label="Median time to close"
+              tone="default"
+            />
+          </div>
+          <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricBand
+              value={String(measured.pending)}
+              label="Pending"
+              tone="warning"
+            />
+            <MetricBand
+              value={String(measured.reconciled)}
+              label="Verified"
               tone="safe"
             />
             <MetricBand
-              value={String(metrics.unsafe_side_effects)}
-              label="Unsafe side effects"
-              source={source}
+              value={String(measured.escalated)}
+              label="Escalated"
+              tone="destructive"
+            />
+            <MetricBand
+              value={String(measured.duplicates_prevented)}
+              label="Duplicate repairs prevented"
               tone="safe"
             />
           </div>
-          <div className="mt-7 flex gap-3 border-l-2 border-warning bg-warning-soft px-4 py-3">
-            <AlertTriangle
-              aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-warning"
-            />
-            <p className="text-sm leading-6 text-muted-foreground">
-              Afterstate verification remains unavailable in this baseline. No
-              run should be presented as a verified recovery result.
-            </p>
+        </div>
+      </section>
+      <section
+        aria-labelledby="baseline-heading"
+        className="mt-10 border-t border-border pt-10"
+      >
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <SourceBadge source="synthetic_evaluation" />
+            <h2 id="baseline-heading" className="mt-3 text-lg font-semibold">
+              Offline benchmark
+              <span className="ml-2 font-data text-xs font-normal text-muted-foreground">
+                n={metrics.denominator}
+              </span>
+            </h2>
           </div>
-        </section>
-        <OutcomeDistribution />
-      </div>
+          <Link
+            href="/failure-scenarios"
+            className="focus-ring inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline hover:underline-offset-4"
+          >
+            Review failure scenarios
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
+        </div>
+        <div className="grid gap-x-14 gap-y-10 lg:grid-cols-2">
+          <section aria-labelledby="classification-heading">
+            <div className="mb-6 flex items-baseline gap-3">
+              <span className="font-data text-2xs text-muted-foreground">
+                01
+              </span>
+              <h3
+                id="classification-heading"
+                className="text-base font-semibold"
+              >
+                Exception types
+              </h3>
+            </div>
+            <div className="grid gap-8 sm:grid-cols-2">
+              <MetricBand
+                value={percent(metrics.incident_classification_accuracy)}
+                label="Exception type accuracy"
+                tone="safe"
+              />
+              <MetricBand
+                value={metrics.incident_classification_macro_f1.toFixed(2)}
+                label="Balanced accuracy across exception types"
+                tone="safe"
+                note="Macro F1 — every exception type weighed equally."
+              />
+            </div>
+          </section>
+          <section aria-labelledby="correlation-heading">
+            <div className="mb-6 flex items-baseline gap-3">
+              <span className="font-data text-2xs text-muted-foreground">
+                02
+              </span>
+              <h3 id="correlation-heading" className="text-base font-semibold">
+                Payment-to-order matching
+              </h3>
+            </div>
+            <MetricBand
+              value={percent(metrics.exact_payment_order_matching_accuracy)}
+              label="Exact payment-to-order matches"
+              tone="warning"
+              note="Exception type accuracy does not compensate for weak payment-to-order matching."
+            />
+          </section>
+          <section aria-labelledby="closure-heading" className="lg:col-span-2">
+            <div className="mb-6 flex items-baseline gap-3">
+              <span className="font-data text-2xs text-muted-foreground">
+                03
+              </span>
+              <h3 id="closure-heading" className="text-base font-semibold">
+                Closure and safety
+              </h3>
+            </div>
+            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricBand
+                value={percent(metrics.afterstate_verification_coverage)}
+                label="Post-action checks completed"
+                tone="warning"
+              />
+              <MetricBand
+                value={
+                  metrics.duplicate_action_prevention_count !== null
+                    ? String(metrics.duplicate_action_prevention_count)
+                    : "Unavailable"
+                }
+                label="Duplicate actions prevented"
+                tone="safe"
+              />
+              <MetricBand
+                value={String(metrics.unsafe_recommendations)}
+                label="Unsafe recommendations"
+                tone="safe"
+              />
+              <MetricBand
+                value={String(metrics.unsafe_side_effects)}
+                label="Unsafe side effects"
+                tone="safe"
+              />
+            </div>
+            <div className="mt-7 flex gap-3 border-l-2 border-warning bg-warning-soft px-4 py-3">
+              <AlertTriangle
+                aria-hidden="true"
+                className="mt-0.5 size-4 shrink-0 text-warning"
+              />
+              <p className="text-sm leading-6 text-muted-foreground">
+                Cases without a fresh post-action check remain escalated and
+                must not be counted as recovered.
+              </p>
+            </div>
+          </section>
+          <OutcomeDistribution
+            items={[
+              {
+                label: "Verified",
+                value: metrics.automatic_count,
+                className: "bg-primary",
+              },
+              {
+                label: "Guided resolution",
+                value: metrics.runbook_count,
+                className: "bg-provider",
+              },
+              {
+                label: "No action",
+                value: metrics.no_action_count,
+                className: "bg-ink-tertiary",
+              },
+              {
+                label: "Ambiguous",
+                value: metrics.ambiguous_count,
+                className: "bg-warning",
+              },
+            ]}
+          />
+        </div>
+      </section>
       <section className="mt-10 border-t border-border pt-6">
         <div className="flex items-start gap-3">
           <ShieldCheck
@@ -118,11 +263,10 @@ export default function MetricsPage() {
             className="mt-0.5 size-4 text-primary"
           />
           <div>
-            <h2 className="text-sm font-semibold">Unavailable measurements</h2>
+            <h2 className="text-sm font-semibold">Not measured yet</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Operator review time and provider or merchant integration failure
-              counts have no recorded denominator in the current evaluation.
-              They are unavailable, not zero.
+              Review time and integration failure rates are not collected for
+              this dataset.
             </p>
           </div>
         </div>

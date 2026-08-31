@@ -25,11 +25,23 @@ describe("RazorpayMcpReadGateway", () => {
     const timeout = await new RazorpayMcpReadGateway(
       () => new Promise(() => undefined),
       1,
-    ).call("fetch_order", {});
+    ).call("fetch_order", { order_id: "order_test_001" });
     const limited = await new RazorpayMcpReadGateway(async () => {
       throw new Error("429 rate limit");
     }).call("search_events", {});
     expect(timeout.result).toBe("timeout");
     expect(limited.result).toBe("rate_limited");
+  });
+  it("denies malformed read input before the transport", async () => {
+    let invoked = false;
+    const gateway = new RazorpayMcpReadGateway(async () => {
+      invoked = true;
+      return {};
+    });
+    const missingId = await gateway.call("fetch_payment", {});
+    const badCount = await gateway.call("search_events", { count: 5000 });
+    expect(missingId).toMatchObject({ result: "denied" });
+    expect(badCount).toMatchObject({ result: "denied" });
+    expect(invoked).toBe(false);
   });
 });

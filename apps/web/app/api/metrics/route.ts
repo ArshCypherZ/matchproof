@@ -1,42 +1,41 @@
-import { requestContext, withStore, incidentDto } from "../../../lib/incidents";
-import { syntheticEvaluationMetrics } from "../../../lib/metrics";
+import { requestContext, listIncidentDtos } from "../../../lib/incidents";
+import {
+  syntheticEvaluationMetrics,
+  liveTenantMetrics,
+} from "../../../lib/metrics";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const { tenantId } = requestContext(request);
-  const result = await withStore(tenantId, async (store) => {
-    const bundles = await store.listIncidents(tenantId);
-    const items = await Promise.all(
-      bundles.map(async (bundle) =>
-        incidentDto(
-          bundle,
-          await store.progress(bundle.incident_id),
-          await store.payment(bundle.payment_id),
-        ),
-      ),
-    );
-    const counts = {
-      automatic: 0,
-      runbook: 0,
-      no_action: 0,
-      ambiguous: 0,
-      unsafe: 0,
-    };
-    for (const item of items) {
-      if (item.status === "escalated") counts.ambiguous += 1;
-      else if (item.reconciliation.resolution === "reconcile_internal_state")
-        counts.runbook += 1;
-      else if (item.reconciliation.resolution === "no_action_required")
-        counts.no_action += 1;
-      else counts.automatic += 1;
-    }
-    return {
-      evaluation: syntheticEvaluationMetrics,
-      operational_source: "Current tenant incident store",
-      total: items.length,
-      ...counts,
-      accuracy: null,
-      unsafe_recommendations: 0,
-    };
+  const [measured, items] = await Promise.all([
+    liveTenantMetrics(tenantId),
+    listIncidentDtos(tenantId),
+  ]);
+  // Outcome categories mirror the offline benchmark's counts. Escalated and
+  // ambiguous are distinct outcomes — the queue's ledger and badges show them
+  // as separate columns — so they are counted separately here too.
+  const summary = {
+    automatic: 0,
+    runbook: 0,
+    no_action: 0,
+    ambiguous: 0,
+    escalated: 0,
+  };
+  for (const item of items) {
+    if (item.status === "escalated") summary.escalated += 1;
+    else if (item.status === "ambiguous") summary.ambiguous += 1;
+    else if (item.reconciliation.resolution === "reconcile_internal_state")
+      summary.runbook += 1;
+    else if (item.reconciliation.resolution === "no_action_required")
+      summary.no_action += 1;
+    else summary.automatic += 1;
+  }
+  return Response.json({
+    evaluation: syntheticEvaluationMetrics,
+    generated_at: syntheticEvaluationMetrics.generated_at,
+    evaluation_source: syntheticEvaluationMetrics.source,
+    operational_source: "Current tenant incident store",
+    measured,
+    total: items.length,
+    ...summary,
   });
-  return Response.json(result);
 }

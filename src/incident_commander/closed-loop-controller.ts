@@ -1,10 +1,5 @@
 import type { ProgressRecord } from "../db/repository";
-import {
-  recordEvent,
-  recordIncidentClass,
-  recordMetric,
-  startSpan,
-} from "../observability";
+import { recordEvent, recordMetric, startSpan } from "../observability";
 
 export const CLOSED_LOOP_STEPS = [
   "gather",
@@ -161,11 +156,6 @@ export class ClosedLoopController {
         span.recordException(error as Error);
         span.setStatus({ code: 2 });
         span.end();
-        recordEvent("incident_escalated", {
-          incident_id: incidentId,
-          step,
-          error: errorMessage(error),
-        });
         const response = definition.failureResponse?.(error) ?? "escalate";
         const reason = errorMessage(error);
         await this.store.setProgress(incidentId, step, `failed:${iteration}`, {
@@ -261,7 +251,6 @@ export class ClosedLoopController {
           "completed",
           result.details,
         );
-        recordIncidentClass("unknown", result.terminal);
         recordEvent(
           result.terminal === "close"
             ? "incident_closed"
@@ -345,6 +334,13 @@ export class ClosedLoopController {
       reason,
       iteration,
     };
+    // Emitted here so a transient step failure that retries and closes never
+    // records an escalation.
+    recordEvent("incident_escalated", {
+      incident_id: incidentId,
+      step,
+      error: reason,
+    });
     await this.store.setProgress(incidentId, "escalate", "completed", details);
     return {
       terminal: "escalate",

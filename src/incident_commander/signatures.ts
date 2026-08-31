@@ -9,13 +9,20 @@ export function processorSignature(payload: SignaturePayload, secret: string) {
     .update(JSON.stringify(copy, Object.keys(copy).sort()))
     .digest("hex");
 }
+
+/** SHA-256 hex digest: 64 lowercase hex characters. */
+export function isHexSignature(signature: string) {
+  return /^[0-9a-f]{64}$/.test(signature);
+}
+
 export function verifyProcessorSignature(
   payload: SignaturePayload,
   signature: string,
   secret: string,
 ) {
+  if (!isHexSignature(signature)) return false;
   const expected = Buffer.from(processorSignature(payload, secret));
-  const provided = Buffer.from(String(signature));
+  const provided = Buffer.from(signature);
   return (
     expected.length === provided.length &&
     crypto.timingSafeEqual(expected, provided)

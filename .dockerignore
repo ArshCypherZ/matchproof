@@ -1,0 +1,14 @@
+node_modules
+apps/web/node_modules
+apps/web/.next
+.git
+
+
+.runtime
+roy
+tests
+evaluation/logs
+evaluation/archive
+evaluation/*.log
+*.log
+.env.local

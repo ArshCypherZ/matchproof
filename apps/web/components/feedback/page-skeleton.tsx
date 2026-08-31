@@ -1,11 +1,22 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export function PageSkeleton({ rows = 6 }: { rows?: number }) {
+export function PageSkeleton({
+  rows = 6,
+  wide = false,
+}: {
+  rows?: number;
+  wide?: boolean;
+}) {
   return (
     <main
       id="main-content"
-      className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8"
+      tabIndex={-1}
+      aria-busy="true"
+      className={`${wide ? "workspace-rail" : "page-rail"} py-10 sm:py-14`}
     >
+      <span role="status" className="sr-only">
+        Loading the page…
+      </span>
       <div className="space-y-3">
         <Skeleton className="h-8 w-52" />
         <Skeleton className="h-5 w-full max-w-xl" />

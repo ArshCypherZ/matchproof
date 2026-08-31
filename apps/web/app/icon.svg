@@ -1,0 +1,19 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Solid chip so the mark reads on light and dark tab bars alike;
+       no prefers-color-scheme (favicon renderers do not reliably honor it).
+       The mark: two ledger rules that match, and the controller's red tick
+       that proves it. Fixed palette — the printed-artifact rule. -->
+  <rect width="512" height="512" rx="112" fill="#181715" />
+  <g transform="translate(18.65, 14.2) scale(0.93)">
+    <rect x="32" y="152" width="192" height="72" fill="#fbf8f1" />
+    <rect x="32" y="296" width="192" height="72" fill="#fbf8f1" />
+    <path
+      d="M296 252 L352 328 L444 190"
+      stroke="#e74432"
+      stroke-width="68"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
+    />
+  </g>
+</svg>

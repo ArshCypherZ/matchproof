@@ -24,6 +24,9 @@ import {
   IncidentClassSchema,
 } from "../src/domain/schemas";
 import { classifyIncident } from "../src/incident_commander/validation";
+import { metricsSnapshot, resetMetrics } from "../src/observability";
+import type { MerchantPlatformAdapter } from "../src/db/merchant-platform-adapter";
+import type { ProviderAfterstateAdapter } from "../src/incident_commander/afterstate-verifier";
 const fixture = path.resolve("fixtures/timeout_after_mutation.json"),
   secret = "test-prototype-secret";
 const raw = () => JSON.parse(fs.readFileSync(fixture, "utf8"));
@@ -231,7 +234,7 @@ describe("payment incident workflow", () => {
       "authorized_verified",
     );
   });
-  it("reconciles a verified authorized outcome without capture state", async () => {
+  it("escalates a verified authorized outcome when merchant order identity is unavailable", async () => {
     const payload = {
       event_id: "evt_authorized_002",
       event_type: "payment.authorized",
@@ -259,7 +262,7 @@ describe("payment incident workflow", () => {
         },
       ],
     };
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-authorized-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-authorized-"));
     const fixturePath = path.join(dir, "authorized.json");
     fs.writeFileSync(fixturePath, JSON.stringify(bundle));
     const diagnosisAdapter = {
@@ -293,19 +296,31 @@ describe("payment incident workflow", () => {
         },
       }),
     } as FixtureDiagnosisAdapter;
+    const merchantPlatformAdapter: MerchantPlatformAdapter = {
+      fetchOrderState: vi.fn(),
+      updateOrderState: vi.fn(),
+      listPendingOrders: vi.fn(),
+    };
     const result = await runIncident(fixturePath, path.join(dir, "state"), {
       resetState: true,
       processorSecret: secret,
       diagnosisAdapter,
+      merchantPlatformAdapter,
     });
-    expect(result.outcome.after_state).toBe("authorized_verified");
-    expect(result.payment_state.state).toBe("authorized_verified");
-    expect(result.gate_decisions).toEqual([
-      expect.objectContaining({
-        action: "reconcile_internal_state",
-        allowed: true,
-      }),
-    ]);
+    expect(result.outcome.status).toBe("escalated");
+    expect(result.outcome.after_state).toBe("authorized");
+    expect(result.payment_state.state).toBe("authorized");
+    expect(result.gate_decisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "reconcile_internal_state",
+          allowed: true,
+        }),
+        expect.objectContaining({ action: "escalate", allowed: true }),
+      ]),
+    );
+    expect(merchantPlatformAdapter.fetchOrderState).not.toHaveBeenCalled();
+    expect(merchantPlatformAdapter.updateOrderState).not.toHaveBeenCalled();
   });
   it("uses the latest same-source observation when seeding controller state", async () => {
     const bundle = raw();
@@ -319,7 +334,7 @@ describe("payment incident workflow", () => {
       received_at: "2026-08-21T10:00:06.000Z",
       payload: { ...internal.payload, payment_state: "captured" },
     });
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-state-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-state-"));
     const store = new IncidentStore(path.join(dir, "incident"), true, secret);
     await store.initialize();
     await store.ingest(bundle);
@@ -332,47 +347,48 @@ describe("payment incident workflow", () => {
       "EV-TIMEOUT-001 is not canonical",
     );
   });
-  it("parses live Groq diagnosis and records provenance", async () => {
+  it("parses the compact advisory and records provenance", async () => {
     const bundle = verifyBundle(raw(), secret);
     const reconstruction = reconstruct(bundle);
     const reconciliation = reconcile(bundle);
+    let providerPrompt = "";
     const adapter = new LiveDiagnosisAdapter({
       apiKey: "test-key",
       model: "test-model",
-      transport: async (request) => ({
-        id: "req-live-001",
-        model: request.model,
-        choices: [
-          {
-            index: 0,
-            finish_reason: "stop",
-            message: {
-              role: "assistant",
-              content: JSON.stringify({
-                hypotheses: [
-                  {
-                    rank: 1,
-                    summary: "Captured payment was observed after timeout.",
-                    reasoning: "Signed evidence confirms the provider event.",
-                    uncertainty: "The callback acknowledgement was lost.",
-                    confidence: 0.9,
-                    evidence_ids: ["EV-WEBHOOK-001"],
-                  },
-                ],
-                recommendation: {
-                  action: "reconcile_internal_state",
-                  reasoning:
-                    "Repair the merchant state from verified evidence.",
-                  uncertainty: "Escalate if the invariant no longer holds.",
-                  evidence_ids: ["EV-STATE-001", "EV-WEBHOOK-001"],
-                },
-              }),
+      transport: async (request) => {
+        providerPrompt = String(request.messages.at(-1)?.content);
+        return {
+          id: "req-live-001",
+          model: request.model,
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: JSON.stringify({
+                  hypothesis: "Captured payment was observed after timeout.",
+                  missing_fact: "The merchant acknowledgement was lost.",
+                  missing_fact_codes: ["afterstate_verification"],
+                  next_safe_read: "fetch_merchant_order",
+                  expected_fact: "The durable merchant order state.",
+                  rationale:
+                    "Signed evidence confirms the provider capture event.",
+                  uncertainty: "The callback acknowledgement was lost.",
+                  confidence: 0.9,
+                  stopping_condition: "Stop after the afterstate is verified.",
+                  operator_summary:
+                    "Provider capture is verified while the merchant acknowledgement is missing.",
+                  terminal_owner: "controller",
+                  evidence_ids: ["EV-WEBHOOK-001"],
+                }),
+              },
             },
-          },
-        ],
-        created: 1,
-        object: "chat.completion",
-      }),
+          ],
+          created: 1,
+          object: "chat.completion",
+        };
+      },
     });
     const result = await adapter.diagnose(
       bundle,
@@ -381,6 +397,104 @@ describe("payment incident workflow", () => {
     );
     expect(result.provenance.provider).toBe("groq");
     expect(result.provenance.request_id).toBe("req-live-001");
+    expect(providerPrompt).not.toContain('"reconciliation"');
+    expect(providerPrompt).not.toContain('"current_state"');
+    expect(providerPrompt).not.toContain('"ambiguity_reasons"');
+    expect(result.provenance.raw_advisory).toMatchObject({
+      format: "compact_json",
+      citation_ids: ["EV-WEBHOOK-001"],
+      invalid_citation_ids: [],
+      citation_valid: true,
+      correction_attempt: 0,
+      corrections: [],
+    });
+    expect(result.diagnosis.investigation).toEqual(
+      expect.objectContaining({
+        missing_fact: "The merchant acknowledgement was lost.",
+        next_safe_read: expect.objectContaining({
+          tool: "fetch_merchant_order",
+        }),
+        operator_packet: expect.objectContaining({
+          terminal_owner: "controller",
+        }),
+      }),
+    );
+  });
+  it("maps the advisory action from deterministic reconciliation", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const reconciliation = reconcile(bundle);
+    const id = reconstruction.timeline[0]!.evidence_id;
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      transport: async (request) => ({
+        id: "req-state-token",
+        model: request.model,
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                hypothesis: "Captured payment observed.",
+                missing_fact: "The merchant order afterstate.",
+                missing_fact_codes: ["afterstate_verification"],
+                next_safe_read: "fetch_merchant_order",
+                expected_fact: "The durable merchant order state.",
+                rationale: "Provider evidence is present.",
+                uncertainty: "Merchant acknowledgement is unresolved.",
+                confidence: 0.7,
+                stopping_condition: "Stop after the afterstate is verified.",
+                operator_summary: "Provider capture requires merchant repair.",
+                terminal_owner: "controller",
+                evidence_ids: [id],
+              }),
+            },
+          },
+        ],
+      }),
+    }).diagnose(bundle, reconstruction, reconciliation);
+    expect(result.diagnosis.recommendation.action).toBe(
+      reconciliation.resolution,
+    );
+  });
+  it("retains the compact advisory with structured missing-fact codes", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const evidenceId = reconstruction.timeline[0]!.evidence_id;
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      transport: async (request) => ({
+        id: "req-compact-artifact",
+        model: request.model,
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                hypothesis: "Merchant state may trail provider evidence.",
+                missing_fact: "The durable merchant order state is unknown.",
+                missing_fact_codes: ["merchant_order_state"],
+                next_safe_read: "fetch_merchant_order",
+                expected_fact: "The durable merchant order state.",
+                rationale: "One bounded read from the owning store.",
+                uncertainty: "The write acknowledgement may have been lost.",
+                confidence: 0.8,
+                stopping_condition: "Escalate if the states still conflict.",
+                operator_summary: "Provider evidence requires merchant review.",
+                terminal_owner: "merchant-engineering",
+                evidence_ids: [evidenceId],
+              }),
+            },
+          },
+        ],
+      }),
+    }).diagnose(bundle, reconstruction, reconcile(bundle));
+    expect(result.diagnosis.investigation?.missing_fact_codes).toEqual([
+      "merchant_order_state",
+    ]);
+    expect(result.provenance.raw_advisory).toMatchObject({
+      format: "compact_json",
+      citation_valid: true,
+      corrections: [],
+    });
   });
   it("falls back safely when Groq is rate limited", async () => {
     const bundle = verifyBundle(raw(), secret);
@@ -388,6 +502,7 @@ describe("payment incident workflow", () => {
     const reconciliation = reconcile(bundle);
     const result = await new LiveDiagnosisAdapter({
       apiKey: "test-key",
+      fallbackOnError: true,
       transport: async () => {
         throw new Error("rate limited");
       },
@@ -400,6 +515,7 @@ describe("payment incident workflow", () => {
     const reconstruction = reconstruct(bundle);
     const result = await new LiveDiagnosisAdapter({
       apiKey: "test-key",
+      fallbackOnError: true,
       transport: async () => ({
         id: "req-live-invalid-citation",
         model: "test-model",
@@ -407,22 +523,18 @@ describe("payment incident workflow", () => {
           {
             message: {
               content: JSON.stringify({
-                hypotheses: [
-                  {
-                    rank: 1,
-                    summary: "Unknown evidence.",
-                    reasoning: "Unknown evidence.",
-                    uncertainty: "Citation is invalid.",
-                    confidence: 0,
-                    evidence_ids: ["EV-NOT-CANONICAL"],
-                  },
-                ],
-                recommendation: {
-                  action: "escalate",
-                  reasoning: "Operator review is required.",
-                  uncertainty: "Citation is invalid.",
-                  evidence_ids: ["EV-NOT-CANONICAL"],
-                },
+                hypothesis: "Unknown evidence.",
+                missing_fact: "The provider payment state.",
+                missing_fact_codes: ["provider_payment_state"],
+                next_safe_read: "fetch_payment",
+                expected_fact: "A canonical provider payment observation.",
+                rationale: "Operator review is required.",
+                uncertainty: "Citation is invalid.",
+                confidence: 0,
+                stopping_condition: "Stop and escalate.",
+                operator_summary: "Citation is invalid.",
+                terminal_owner: "payment-operations",
+                evidence_ids: ["EV-NOT-CANONICAL"],
               }),
             },
           },
@@ -431,6 +543,277 @@ describe("payment incident workflow", () => {
     }).diagnose(bundle, reconstruction, reconcile(bundle));
     expect(result.provenance.provider).toBe("deterministic-fallback");
     expect(result.provenance.failure_reason).toContain("not canonical");
+    expect(result.provenance.raw_advisory).toMatchObject({
+      citation_ids: ["EV-NOT-CANONICAL"],
+      canonical_citation_ids: [],
+      invalid_citation_ids: ["EV-NOT-CANONICAL"],
+      citation_valid: false,
+    });
+  });
+  it("fails closed on an advisory that violates the output contract", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const reconciliation = reconcile(bundle);
+    const id = reconstruction.timeline[0]!.evidence_id;
+    let calls = 0;
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      fallbackOnError: true,
+      sleep: async () => undefined,
+      transport: async () => ({
+        id: `req-${++calls}`,
+        model: "openai/gpt-oss-20b",
+        choices: [
+          {
+            message: {
+              // missing_fact_codes is required: the advisory is rejected
+              // without a repair round-trip.
+              content: JSON.stringify({
+                hypothesis: "Observed state",
+                missing_fact: "The merchant order state.",
+                next_safe_read: "fetch_merchant_order",
+                expected_fact: "The durable merchant order state.",
+                rationale: "Evidence is consistent",
+                uncertainty: "Bounded",
+                confidence: 0.8,
+                stopping_condition: "Stop after the read.",
+                operator_summary: "Observed state",
+                terminal_owner: "controller",
+                evidence_ids: [id],
+              }),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 12, total_tokens: 22 },
+      }),
+    }).diagnose(bundle, reconstruction, reconciliation);
+    expect(calls).toBe(1);
+    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.failure_reason).toContain("missing_fact_codes");
+    expect(result.provenance.raw_advisory).toMatchObject({
+      citation_valid: true,
+      corrections: [],
+    });
+  });
+  it("retries a retry-after response and does not fallback", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const id = reconstruction.timeline[0]!.evidence_id;
+    let calls = 0;
+    const waits: number[] = [];
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+      transport: async () => {
+        calls += 1;
+        if (calls === 1) {
+          const error = new Error("rate limited");
+          (error as any).headers = new Headers({ "retry-after-ms": "25" });
+          throw error;
+        }
+        return {
+          id: "req-ok",
+          model: "openai/gpt-oss-20b",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  hypothesis: "ok",
+                  missing_fact: "ok",
+                  missing_fact_codes: ["provider_payment_state"],
+                  next_safe_read: "fetch_payment",
+                  expected_fact: "ok",
+                  rationale: "ok",
+                  uncertainty: "ok",
+                  confidence: 1,
+                  stopping_condition: "ok",
+                  operator_summary: "ok",
+                  terminal_owner: "controller",
+                  evidence_ids: [id],
+                }),
+              },
+            },
+          ],
+        };
+      },
+    }).diagnose(bundle, reconstruction, reconcile(bundle));
+    expect(calls).toBe(2);
+    expect(waits).toContain(25);
+    expect(result.provenance.provider).toBe("groq");
+  });
+  it("retries transient connection errors with bounded backoff", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const id = reconstruction.timeline[0]!.evidence_id;
+    let calls = 0;
+    const waits: number[] = [];
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+      transport: async () => {
+        calls += 1;
+        if (calls < 3) throw new Error("Connection error");
+        return {
+          id: "req-ok",
+          model: "test-model",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  hypothesis: "ok",
+                  missing_fact: "ok",
+                  missing_fact_codes: ["provider_payment_state"],
+                  next_safe_read: "fetch_payment",
+                  expected_fact: "ok",
+                  rationale: "ok",
+                  uncertainty: "ok",
+                  confidence: 1,
+                  stopping_condition: "ok",
+                  operator_summary: "ok",
+                  terminal_owner: "controller",
+                  evidence_ids: [id],
+                }),
+              },
+            },
+          ],
+        };
+      },
+    }).diagnose(bundle, reconstruction, reconcile(bundle));
+    expect(calls).toBe(3);
+    expect(waits).toEqual([500, 1000]);
+    expect(result.provenance.provider).toBe("groq");
+  });
+  it("records model call and token metrics", async () => {
+    resetMetrics();
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const id = reconstruction.timeline[0]!.evidence_id;
+    await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      transport: async () => ({
+        id: "req-metrics",
+        model: "test",
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                hypothesis: "ok",
+                missing_fact: "ok",
+                missing_fact_codes: ["provider_payment_state"],
+                next_safe_read: "fetch_payment",
+                expected_fact: "ok",
+                rationale: "ok",
+                uncertainty: "ok",
+                confidence: 1,
+                stopping_condition: "ok",
+                operator_summary: "ok",
+                terminal_owner: "controller",
+                evidence_ids: [id],
+              }),
+            },
+          },
+        ],
+        usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
+      }),
+    }).diagnose(bundle, reconstruction, reconcile(bundle));
+    expect(metricsSnapshot()).toMatchObject({
+      model_calls: 1,
+      model_attempts: 1,
+      model_prompt_tokens: 3,
+      model_completion_tokens: 4,
+      model_total_tokens: 7,
+    });
+  });
+  it("sends the incident class and read tool contract in the prompt", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const id = reconstruction.timeline[0]!.evidence_id;
+    let request: any;
+    await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      transport: async (value) => {
+        request = value;
+        return {
+          id: "req-contract",
+          model: value.model,
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  hypothesis: "ok",
+                  missing_fact: "ok",
+                  missing_fact_codes: ["provider_payment_state"],
+                  next_safe_read: "fetch_payment",
+                  expected_fact: "ok",
+                  rationale: "ok",
+                  uncertainty: "ok",
+                  confidence: 1,
+                  stopping_condition: "ok",
+                  operator_summary: "ok",
+                  terminal_owner: "controller",
+                  evidence_ids: [id],
+                }),
+              },
+            },
+          ],
+        };
+      },
+    }).diagnose(bundle, reconstruction, reconcile(bundle));
+    const prompt = String(request.messages.at(-1).content);
+    expect(prompt).toContain(`"incident_class":"capture_timeout"`);
+    expect(prompt).toContain("read_tool_contract");
+    expect(prompt).toContain("few_shot");
+    expect(prompt).not.toContain("reconciliation");
+  });
+  it("fails closed on a transport that exceeds the adapter deadline", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      fallbackOnError: true,
+      timeoutMs: 5,
+      sleep: async () => undefined,
+      transport: async () => new Promise(() => undefined),
+    }).diagnose(bundle, reconstruction, reconcile(bundle));
+    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.failure_reason).toContain("timed out");
+  });
+  it("fails closed on malformed JSON when fallback is enabled", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    let calls = 0;
+    const result = await new LiveDiagnosisAdapter({
+      apiKey: "test-key",
+      fallbackOnError: true,
+      transport: async () => ({
+        id: `req-json-${++calls}`,
+        model: "test-model",
+        choices: [{ message: { content: "{bad json" } }],
+      }),
+    }).diagnose(bundle, reconstruction, reconcile(bundle));
+    expect(calls).toBe(1);
+    expect(result.provenance.provider).toBe("deterministic-fallback");
+    expect(result.provenance.raw_advisory).toMatchObject({
+      format: "invalid",
+    });
+  });
+  it("throws on an invalid advisory when fallback is disabled", async () => {
+    const bundle = verifyBundle(raw(), secret);
+    const reconstruction = reconstruct(bundle);
+    await expect(
+      new LiveDiagnosisAdapter({
+        apiKey: "test-key",
+        transport: async () => ({
+          id: "req-bad",
+          model: "test-model",
+          choices: [{ message: { content: "{}" } }],
+        }),
+      }).diagnose(bundle, reconstruction, reconcile(bundle)),
+    ).rejects.toThrow("Groq diagnosis exhausted retries");
   });
   it("requires governance fields when an outcome escalates", () => {
     expect(() =>
@@ -460,8 +843,8 @@ describe("payment incident workflow", () => {
       expect(() => verifyBundle(b, secret)).toThrow(EvidenceError);
     }
   });
-  it("end to end reconciliation is durable and idempotent", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-ts-")),
+  it("persists and replays escalation when merchant afterstate is unavailable", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-ts-")),
       state = path.join(dir, "incident");
     const a = await runIncident(fixture, state, {
         resetState: true,
@@ -473,12 +856,12 @@ describe("payment incident workflow", () => {
         processorSecret: secret,
         diagnosisAdapter: new FixtureDiagnosisAdapter(),
       });
-    expect(a.outcome.status).toBe("reconciled");
-    expect(a.payment_state.state).toBe("captured_verified");
+    expect(a.outcome.status).toBe("escalated");
+    expect(a.payment_state.state).toBe("capture_pending");
     expect(a.audit_records).toContainEqual(
       expect.objectContaining({ eventType: "policy_evaluated" }),
     );
-    expect(b.outcome.status).toBe("already_completed");
+    expect(b.outcome.status).toBe("escalated");
     const resumedStore = new IncidentStore(state, false, secret);
     await resumedStore.initialize();
     const progress = await resumedStore.progress(
@@ -495,12 +878,89 @@ describe("payment incident workflow", () => {
         "execute",
         "observe",
         "verify",
-        "close",
+        "escalate",
       ]),
     );
   });
+  it("closes merchant reconciliation after verified afterstate and replays it without another write", async () => {
+    const fixturePath = path.resolve("fixtures/paid_pending.json");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-afterstate-"));
+    const state = path.join(dir, "incident");
+    const timestamp = "2026-08-21T10:00:03.000Z";
+    let merchantState: "pending" | "paid" = "pending";
+    const merchantRecord = () => ({
+      order_id: "order_paid_pending_001",
+      payment_id: "pay_paid_pending_001",
+      state: merchantState,
+      amount_minor: 1000,
+      currency: "INR",
+      created_at: timestamp,
+      updated_at: timestamp,
+      observed_at: timestamp,
+    });
+    const updateOrderState = vi.fn<MerchantPlatformAdapter["updateOrderState"]>(
+      async (orderId, requestedState, idempotencyKey) => {
+        const beforeState = merchantState;
+        merchantState = requestedState;
+        return {
+          acknowledgement: {
+            status: "updated",
+            order_id: orderId,
+            idempotency_key: idempotencyKey,
+            before_state: beforeState,
+            requested_state: requestedState,
+            acknowledged_at: timestamp,
+          },
+          observation: merchantRecord(),
+        };
+      },
+    );
+    const merchantPlatformAdapter: MerchantPlatformAdapter = {
+      fetchOrderState: vi.fn(async () => merchantRecord()),
+      updateOrderState,
+      listPendingOrders: vi.fn(async () => []),
+    };
+    const fetchPayment = vi.fn<ProviderAfterstateAdapter["fetchPayment"]>(
+      async () => ({
+        entity: "payment",
+        id: "pay_paid_pending_001",
+        status: "captured",
+        captured: true,
+        amount: 1000,
+        currency: "INR",
+        order_id: "order_paid_pending_001",
+        amount_refunded: 0,
+        refund_status: null,
+        error_code: null,
+        error_description: null,
+      }),
+    );
+    const options = {
+      processorSecret: secret,
+      diagnosisAdapter: new FixtureDiagnosisAdapter(),
+      merchantPlatformAdapter,
+      providerAfterstateAdapter: { fetchPayment },
+    };
+    const first = await runIncident(fixturePath, state, {
+      ...options,
+      resetState: true,
+    });
+    const replay = await runIncident(fixturePath, state, {
+      ...options,
+      resetState: false,
+    });
+    expect(first.outcome.status).toBe("reconciled");
+    expect(first.afterstate_verification?.status).toBe("verified");
+    expect(replay.outcome.status).toBe("already_completed");
+    expect(replay.afterstate_verification).toMatchObject({
+      status: "verified",
+      replayed: true,
+    });
+    expect(updateOrderState).toHaveBeenCalledOnce();
+    expect(fetchPayment).toHaveBeenCalledOnce();
+  });
   it("does not repeat completed provider gathering after restart", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-resume-gather-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-resume-gather-"));
     const state = path.join(dir, "incident");
     const gather = vi.fn(async () => []);
     const options = {
@@ -513,7 +973,7 @@ describe("payment incident workflow", () => {
     expect(gather).toHaveBeenCalledOnce();
   });
   it("processes incident batches sequentially", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-batch-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-batch-"));
     const results = await runIncidentBatch(
       ["first", "second"].map((name) => ({
         fixture,
@@ -526,12 +986,12 @@ describe("payment incident workflow", () => {
       })),
     );
     expect(results.map((result) => result.outcome.status)).toEqual([
-      "reconciled",
-      "reconciled",
+      "escalated",
+      "escalated",
     ]);
   });
   it("does not duplicate a concurrent incident or progress marker", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-concurrent-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-concurrent-"));
     const store = new IncidentStore(path.join(dir, "incident"), true, secret);
     await store.initialize();
     await Promise.all(Array.from({ length: 8 }, () => store.ingest(raw())));
@@ -540,7 +1000,7 @@ describe("payment incident workflow", () => {
     await store.close();
   });
   it("reverifies persisted evidence when it is read", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "o2-ts-")),
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-ts-")),
       s = new IncidentStore(path.join(dir, "x"), true, secret);
     await s.initialize();
     await s.ingest(raw());

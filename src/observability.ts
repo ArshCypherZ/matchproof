@@ -7,15 +7,39 @@ export type ObservabilityEvent =
   | "execution_attempt"
   | "afterstate_result"
   | "incident_closed"
-  | "incident_escalated";
+  | "incident_escalated"
+  | "model_call_started"
+  | "model_call_completed"
+  | "model_contract_violation"
+  | "model_fallback";
 
-type MetricName =
+type StaticMetricName =
   | "incidents_processed"
   | "evidence_gather_latency_ms"
   | "provider_api_latency_ms"
   | "model_call_latency_ms"
+  | "model_calls"
+  | "model_attempts"
+  | "model_fallbacks"
+  | "model_prompt_tokens"
+  | "model_completion_tokens"
+  | "model_total_tokens"
   | "model_failures"
+  | "model_contract_corrections"
+  | "model_state_action_corrections"
+  | "model_investigation_fallbacks"
+  | "tier0_playbook_closures"
+  | "cluster_investigations"
+  | "cluster_replayed_records"
   | "incident_closure_latency_ms";
+
+/** Key families whose suffix is produced at runtime. */
+type DynamicMetricName =
+  | `model_fallback_reason.${"citation_validation" | "schema_validation" | "timeout" | "other"}`
+  | `incidents_by_class.${string}`
+  | `incidents_by_terminal.${string}`;
+
+type MetricName = StaticMetricName | DynamicMetricName;
 
 const counters = new Map<string, number>();
 const timings = new Map<string, { total: number; count: number }>();
@@ -28,7 +52,7 @@ export function redact(value: unknown): unknown {
   if (value === null || typeof value !== "object") {
     if (
       typeof value === "string" &&
-      /(secret|token|authorization|api[_-]?key|password)/i.test(value)
+      /(secret|authorization|api[_-]?key|password)/i.test(value)
     )
       return "[REDACTED]";
     return value;
@@ -37,7 +61,7 @@ export function redact(value: unknown): unknown {
   const result: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
     result[key] =
-      /(secret|token|authorization|api[_-]?key|password|raw_body|email|contact|vpa)/i.test(
+      /(secret|authorization|api[_-]?key|password|raw_body|email|contact|vpa)/i.test(
         key,
       )
         ? "[REDACTED]"
@@ -72,17 +96,25 @@ export function recordMetric(name: MetricName, value = 1) {
   } else counters.set(name, (counters.get(name) ?? 0) + value);
 }
 
+export function recordFallbackReason(reason: string) {
+  const category = /canonical|evidence[_ ]?id|citation/i.test(reason)
+    ? "citation_validation"
+    : /json|schema|validate|invalid[_ ]?(type|enum|value)/i.test(reason)
+      ? "schema_validation"
+      : /timeout|timed out|etimedout/i.test(reason)
+        ? "timeout"
+        : "other";
+  const key: DynamicMetricName = `model_fallback_reason.${category}`;
+  counters.set(key, (counters.get(key) ?? 0) + 1);
+}
+
 export function recordIncidentClass(incidentClass: string, terminal: string) {
   const safeClass = safeId(incidentClass) ?? "unknown";
   const safeTerminal = safeId(terminal) ?? "unknown";
-  counters.set(
-    `incidents_by_class.${safeClass}`,
-    (counters.get(`incidents_by_class.${safeClass}`) ?? 0) + 1,
-  );
-  counters.set(
-    `incidents_by_terminal.${safeTerminal}`,
-    (counters.get(`incidents_by_terminal.${safeTerminal}`) ?? 0) + 1,
-  );
+  const classKey: DynamicMetricName = `incidents_by_class.${safeClass}`;
+  const terminalKey: DynamicMetricName = `incidents_by_terminal.${safeTerminal}`;
+  counters.set(classKey, (counters.get(classKey) ?? 0) + 1);
+  counters.set(terminalKey, (counters.get(terminalKey) ?? 0) + 1);
 }
 
 export function metricsSnapshot() {
@@ -101,7 +133,7 @@ export function startSpan(
   name: string,
   attributes: Record<string, string> = {},
 ) {
-  const tracer: Tracer = trace.getTracer("razorpay-incident-commander");
+  const tracer: Tracer = trace.getTracer("matchproof");
   const span = tracer.startSpan(name, undefined, context.active());
   for (const [key, value] of Object.entries(attributes))
     span.setAttribute(key, value);

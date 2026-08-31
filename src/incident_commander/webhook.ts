@@ -94,7 +94,11 @@ export class RazorpayWebhookInbox {
 
   async process(
     eventId: string,
-    options: { webhookSecret?: string; processorSecret?: string } = {},
+    options: {
+      webhookSecret?: string;
+      processorSecret?: string;
+      tenantId?: string;
+    } = {},
   ): Promise<WebhookProcessingResult | null> {
     assertEventId(eventId);
     const stored = await this.store.webhookEvent(eventId);
@@ -211,6 +215,7 @@ export class RazorpayWebhookInbox {
       createIncident: {
         incidentId: `inc_webhook_${paymentId}`,
         idempotencyKey,
+        ...(options.tenantId ? { tenantId: options.tenantId } : {}),
       },
     });
     await this.store.audit(`webhook_incident_${result.status}`, {

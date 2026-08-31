@@ -1,4 +1,5 @@
-import { desc, eq, isNull, sql } from "drizzle-orm";
+import path from "node:path";
+import { desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { createSqliteDatabase, type SqliteDatabase } from "./sqlite-client";
 import {
@@ -77,7 +78,13 @@ export class SqliteIncidentRepository implements IncidentRepository {
     this.db = this.connection.db;
   }
   async initialize(reset: boolean) {
-    migrate(this.db, { migrationsFolder: "drizzle-sqlite" });
+    const cwd = process.cwd();
+    const projectRoot = cwd.endsWith(path.join("apps", "web"))
+      ? path.resolve(cwd, "../..")
+      : cwd;
+    migrate(this.db, {
+      migrationsFolder: path.join(projectRoot, "drizzle-sqlite"),
+    });
     if (reset)
       this.connection.client.exec(
         "DELETE FROM audit_events; DELETE FROM afterstate_observations; DELETE FROM recovery_attempts; DELETE FROM recoveries; DELETE FROM incidents; DELETE FROM payments; DELETE FROM razorpay_webhook_events; DELETE FROM incident_progress; DELETE FROM merchant_order_updates; DELETE FROM merchant_orders;",
@@ -223,6 +230,15 @@ export class SqliteIncidentRepository implements IncidentRepository {
       .where(eq(payments.paymentId, id))
       .all();
     return row ? asPayment(row) : undefined;
+  }
+  async paymentsFor(paymentIds: string[]) {
+    if (!paymentIds.length) return [];
+    return this.db
+      .select()
+      .from(payments)
+      .where(inArray(payments.paymentId, paymentIds))
+      .all()
+      .map(asPayment);
   }
   async updatePayment(id: string, state: PaymentState) {
     this.db
@@ -418,6 +434,16 @@ export class SqliteIncidentRepository implements IncidentRepository {
       .all()
       .map(asProgress);
   }
+  async progressFor(incidentIds: string[]) {
+    if (!incidentIds.length) return [];
+    return this.db
+      .select()
+      .from(incidentProgress)
+      .where(inArray(incidentProgress.incidentId, incidentIds))
+      .orderBy(incidentProgress.sequence)
+      .all()
+      .map(asProgress);
+  }
   async latestProgress(incidentId: string) {
     const [row] = this.db
       .select()
@@ -524,6 +550,9 @@ export class SqliteIncidentRepository implements IncidentRepository {
             paymentId: bundle.payment_id,
             idempotencyKey: bundle.idempotency_key,
             bundle: JSON.stringify(bundle),
+            ...(input.createIncident.tenantId
+              ? { tenantId: input.createIncident.tenantId }
+              : {}),
           })
           .onConflictDoNothing()
           .run();

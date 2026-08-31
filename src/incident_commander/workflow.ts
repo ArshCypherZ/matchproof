@@ -1,11 +1,11 @@
 import fs from "node:fs";
+import { z } from "zod";
 import {
   DiagnosisOutputSchema,
   parseDiagnosisOutput,
   PolicyGateDecisionSchema,
   RecommendationSchema,
   RecoveryOutcomeSchema,
-  VerifiedPaymentStateSchema,
   type DiagnosisOutput,
   type PolicyGateDecision,
   type ReconciliationResult,
@@ -15,7 +15,6 @@ import {
 } from "../domain/schemas";
 import {
   IncidentStore,
-  FixtureDiagnosisAdapter,
   LiveDiagnosisAdapter,
   verifyBundle,
   reconstruct,
@@ -36,14 +35,27 @@ import {
   ClosedLoopController,
   type ClosedLoopStepDefinition,
 } from "./closed-loop-controller";
+import {
+  AgentInvestigator,
+  InvestigationAgentStateSchema,
+  type InvestigationContext,
+  type InvestigationDiagnosisAdapter,
+  type InvestigationTraceEntry,
+} from "./agent-investigator";
+import { PlaybookDiagnosisAdapter, TieredDiagnosisAdapter } from "./playbooks";
+import type {
+  RazorpayMcpProvenance,
+  RazorpayMcpReadGateway,
+} from "./razorpay-mcp";
+import { recordIncidentClass } from "../observability";
 
 export type RunIncidentOptions = {
   resetState?: boolean;
   processorSecret?: string;
-  diagnosisAdapter?: Pick<
-    FixtureDiagnosisAdapter | LiveDiagnosisAdapter,
-    "diagnose"
-  > & { provider: string; model: string };
+  diagnosisAdapter?: InvestigationDiagnosisAdapter & {
+    provider: string;
+    model: string;
+  };
   diagnosisMode?: string;
   evidenceGatherer?: Pick<EvidenceGatherer, "gather">;
   merchantPlatformAdapter?: MerchantPlatformAdapter;
@@ -51,6 +63,12 @@ export type RunIncidentOptions = {
   tenantId?: string;
   maxIterations?: number;
   mode?: "fixture" | "live";
+  mcpGateway?: RazorpayMcpReadGateway;
+  maxInvestigationSteps?: number;
+  applyInvestigationObservation?: (
+    context: InvestigationContext,
+    observation: RazorpayMcpProvenance,
+  ) => Promise<InvestigationContext> | InvestigationContext;
 };
 
 export type IncidentRunResult = {
@@ -67,6 +85,7 @@ export type IncidentRunResult = {
   payment_state: NonNullable<Awaited<ReturnType<IncidentStore["payment"]>>>;
   audit_records: unknown[];
   state_path: string;
+  investigation_trace?: readonly InvestigationTraceEntry[];
 };
 
 const escalationOutcome = (
@@ -88,6 +107,12 @@ const escalationOutcome = (
     policy_version: "deterministic-policy-v1",
     credential_scope: "merchant-state-reconciliation",
   });
+
+/** Durable gate progress written by a prior run and replayed on resume. */
+const ReplayGateDetailsSchema = z.object({
+  decisions: z.array(PolicyGateDecisionSchema),
+  recommendation: RecommendationSchema,
+});
 
 const escalationDiagnosis = (
   bundle: IncidentBundle,
@@ -159,10 +184,16 @@ export async function runIncident(
   let afterstateVerification: AfterstateVerificationResult | undefined;
   let paymentAfter:
     NonNullable<Awaited<ReturnType<IncidentStore["payment"]>>> | undefined;
-  let orderId: string | undefined;
+  // A merchant afterstate contract is required for every merchant-state
+  // reconciliation. Seed the order identity from the signed bundle so replay
+  // paths enforce the same contract as the first execution.
+  let orderId: string | undefined = initialBundle.evidence.find(
+    (entry) => entry.kind === "merchant_order_state",
+  )?.payload.order_id;
   let executionKey: string | undefined;
   let executionBeforeState: RecoveryOutcome["before_state"] | undefined;
   let controllerFailureReason: string | undefined;
+  let investigationTrace: readonly InvestigationTraceEntry[] | undefined;
 
   const savedIncident = async () => {
     const saved = await store.incident(initialBundle.incident_id);
@@ -181,10 +212,15 @@ export async function runIncident(
       failureResponse: () => "retry_safe_read",
       async run({ replay }) {
         bundle = await savedIncident();
+        // Re-seed the target order from the persisted bundle on every run:
+        // a resumed run must not carry an order identity the current bundle
+        // no longer contains, and an order learned during an earlier
+        // investigation must survive later gather iterations.
+        const bundleOrderId = bundle.evidence.find(
+          (entry) => entry.kind === "merchant_order_state",
+        )?.payload.order_id;
+        if (bundleOrderId) orderId = bundleOrderId;
         if (!replay) {
-          orderId = bundle.evidence.find(
-            (entry) => entry.kind === "merchant_order_state",
-          )?.payload.order_id;
           const gathered = opts.evidenceGatherer
             ? await opts.evidenceGatherer.gather({
                 paymentId: bundle.payment_id,
@@ -224,7 +260,14 @@ export async function runIncident(
       async run() {
         bundle = await savedIncident();
         reconstruction = reconstruct(bundle);
-        reconciliation = reconcile(bundle);
+        const merchantObservation =
+          opts.merchantPlatformAdapter && orderId
+            ? await opts.merchantPlatformAdapter.fetchOrderState(orderId)
+            : undefined;
+        reconciliation = reconcile({
+          bundle,
+          ...(merchantObservation ? { merchant: merchantObservation } : {}),
+        });
         return {
           status: "completed" as const,
           details: { current_state: reconstruction.current_state },
@@ -239,17 +282,83 @@ export async function runIncident(
         const canonicalIds = new Set(
           reconstruction.timeline.map((entry) => entry.evidence_id),
         );
-        model = replay
-          ? parseDiagnosisOutput(progress?.details, canonicalIds)
-          : parseDiagnosisOutput(
-              await (
-                opts.diagnosisAdapter ??
-                (opts.mode === "live"
-                  ? new LiveDiagnosisAdapter()
-                  : new FixtureDiagnosisAdapter())
-              ).diagnose(bundle, reconstruction, reconciliation),
-              canonicalIds,
-            );
+        const adapter =
+          opts.diagnosisAdapter ??
+          (opts.mode === "live"
+            ? new TieredDiagnosisAdapter({
+                model: new LiveDiagnosisAdapter(),
+              })
+            : new PlaybookDiagnosisAdapter());
+        if (replay) {
+          model = parseDiagnosisOutput(progress?.details, canonicalIds);
+        } else if (opts.mcpGateway) {
+          const investigation = await new AgentInvestigator({
+            diagnosisAdapter: adapter,
+            mcpGateway: opts.mcpGateway,
+            ...(opts.maxInvestigationSteps !== undefined
+              ? { maxSteps: opts.maxInvestigationSteps }
+              : {}),
+            ...(opts.merchantPlatformAdapter
+              ? { merchantOrderReader: opts.merchantPlatformAdapter }
+              : {}),
+            stateStore: {
+              async load(incidentId) {
+                const records = await store.progress(incidentId);
+                const latest = records
+                  .filter((record) => record.step === "agent_investigation")
+                  .at(-1);
+                if (!latest) return undefined;
+                // Stored investigation state is external input: a corrupt or
+                // schema-drifted row must fail here with a parse error before
+                // the loop replays it.
+                return InvestigationAgentStateSchema.parse(latest.details);
+              },
+              async save(state) {
+                // The progress table keys rows by (incident, step, status):
+                // stamping the trace length keeps every investigation step
+                // durable, since a bare "running" row is written once and
+                // silently dropped afterwards.
+                await store.setProgress(
+                  state.incident_id,
+                  "agent_investigation",
+                  state.status === "completed"
+                    ? "completed"
+                    : `running:${state.trace.length}`,
+                  state,
+                );
+              },
+            },
+            ...(opts.applyInvestigationObservation
+              ? { applyObservation: opts.applyInvestigationObservation }
+              : {}),
+          }).investigate(bundle, reconstruction, reconciliation);
+          model = investigation.output;
+          investigationTrace = investigation.trace;
+          if (investigation.context.bundle !== bundle) {
+            bundle = verifyBundle(investigation.context.bundle, secret);
+            reconstruction = investigation.context.reconstruction;
+            reconciliation = investigation.context.reconciliation;
+            orderId =
+              reconciliation.target_order_id ??
+              reconciliation.provider_order_id ??
+              reconciliation.merchant_order_ids[0] ??
+              orderId;
+            await store.updateIncident(bundle);
+          }
+        } else {
+          model = parseDiagnosisOutput(
+            await adapter.diagnose(bundle, reconstruction, reconciliation),
+            canonicalIds,
+          );
+        }
+        if (!replay && opts.mcpGateway)
+          await store.audit("agent_investigation_completed", {
+            incident_id: bundle.incident_id,
+            provider: model.provenance.provider,
+            model: model.provenance.returned_model,
+            investigation: model.diagnosis.investigation,
+            trace: investigationTrace,
+          });
         recommendation = model.diagnosis.recommendation;
         return {
           status: "completed" as const,
@@ -263,17 +372,41 @@ export async function runIncident(
         if (!model || !reconstruction || !reconciliation)
           throw new Error("diagnosis must complete before policy evaluation");
         if (replay) {
-          const details = progress?.details as
-            { decisions?: unknown; recommendation?: unknown } | undefined;
+          const details = ReplayGateDetailsSchema.parse(progress?.details);
           gateDecisions = PolicyGateDecisionSchema.array().parse(
-            details?.decisions,
+            details.decisions,
           );
           decision = gateDecisions.at(-1);
           recommendation = RecommendationSchema.parse(details?.recommendation);
           if (!decision) throw new Error("durable policy decision is missing");
+          if (
+            decision.allowed &&
+            recommendation.action === "reconcile_internal_state" &&
+            (!opts.merchantPlatformAdapter || !orderId)
+          ) {
+            const reason = !opts.merchantPlatformAdapter
+              ? "blocked: merchant afterstate adapter is required before reconciliation"
+              : "blocked: merchant order evidence is required before reconciliation";
+            recommendation = {
+              action: "escalate",
+              reasoning:
+                "Merchant state cannot be reconciled without an independent afterstate.",
+              uncertainty: reason,
+              evidence_ids: model.diagnosis.recommendation.evidence_ids,
+            };
+            decision = await evaluateAndAudit(
+              recommendation,
+              bundle,
+              reconstruction,
+              await store.payment(bundle.payment_id),
+              reconciliation,
+              auditPolicy,
+            );
+            gateDecisions.push(decision);
+          }
           return {
             status: "completed" as const,
-            details: progress?.details,
+            details: { decisions: gateDecisions, recommendation },
           };
         }
         const payment = await store.payment(bundle.payment_id);
@@ -287,6 +420,31 @@ export async function runIncident(
         );
         gateDecisions = [decision];
         recommendation = model.diagnosis.recommendation;
+        if (
+          decision.allowed &&
+          recommendation.action === "reconcile_internal_state" &&
+          (!opts.merchantPlatformAdapter || !orderId)
+        ) {
+          const reason = !opts.merchantPlatformAdapter
+            ? "blocked: merchant afterstate adapter is required before reconciliation"
+            : "blocked: merchant order evidence is required before reconciliation";
+          recommendation = {
+            action: "escalate",
+            reasoning:
+              "Merchant state cannot be reconciled without an independent afterstate.",
+            uncertainty: reason,
+            evidence_ids: model.diagnosis.recommendation.evidence_ids,
+          };
+          decision = await evaluateAndAudit(
+            recommendation,
+            bundle,
+            reconstruction,
+            payment,
+            reconciliation,
+            auditPolicy,
+          );
+          gateDecisions.push(decision);
+        }
         if (!decision.allowed) {
           recommendation = {
             action: "escalate",
@@ -324,31 +482,75 @@ export async function runIncident(
       name: "execute",
       failureResponse: () => "verify_state",
       async run() {
-        if (!decision || !recommendation || !reconstruction)
+        if (!decision || !recommendation || !reconstruction || !reconciliation)
           throw new Error("policy gate must complete before execution");
         const payment = await store.payment(bundle.payment_id);
         if (!payment)
           throw new Error(`payment ${bundle.payment_id} was not persisted`);
+        if (
+          recommendation.action === "reconcile_internal_state" &&
+          (!opts.merchantPlatformAdapter || !orderId)
+        ) {
+          const key = `escalate:${bundle.incident_id}:${bundle.payment_id}:${bundle.idempotency_key}`;
+          const reason = !opts.merchantPlatformAdapter
+            ? "merchant afterstate adapter is required before reconciliation"
+            : "merchant order evidence is required before reconciliation";
+          outcome = escalationOutcome(
+            "escalate",
+            key,
+            payment.state,
+            "merchant-state reconciliation was held safely",
+            reason,
+          );
+          await store.completeRecovery(key, {
+            action: "escalate",
+            status: "escalated",
+            before_state: payment.state,
+            after_state: payment.state,
+            completed_at: new Date().toISOString(),
+          });
+          await store.audit("recovery_escalated", outcome);
+          return {
+            status: "completed" as const,
+            details: { action: "escalate", reason },
+          };
+        }
         const key = `${recommendation.action}:${bundle.incident_id}:${bundle.payment_id}:${bundle.idempotency_key}`;
         executionKey = key;
         executionBeforeState = payment.state;
         const existing = await store.recovery(key);
         if (existing && payment.state === existing.after_state)
-          outcome = RecoveryOutcomeSchema.parse({
-            status: "already_completed",
-            action: recommendation.action,
-            idempotency_key: key,
-            before_state: existing.before_state,
-            after_state: existing.after_state,
-            reason: "recovery already completed and durable state agrees",
-          });
+          outcome =
+            existing.status === "escalated"
+              ? escalationOutcome(
+                  existing.action,
+                  key,
+                  existing.before_state,
+                  "operator escalation is already recorded durably",
+                  recommendation.uncertainty,
+                )
+              : RecoveryOutcomeSchema.parse({
+                  status: "already_completed",
+                  action: existing.action,
+                  idempotency_key: key,
+                  before_state: existing.before_state,
+                  after_state: existing.after_state,
+                  reason: "recovery already completed and durable state agrees",
+                });
         else if (
           opts.merchantPlatformAdapter &&
           recommendation.action === "reconcile_internal_state"
         ) {
-          orderId ??= initialBundle.evidence.find(
-            (entry) => entry.kind === "merchant_order_state",
-          )?.payload.order_id;
+          // The repair target comes from the current bundle and
+          // reconciliation, so a resumed run repairs the order the evidence
+          // now points at.
+          orderId ??=
+            bundle.evidence.find(
+              (entry) => entry.kind === "merchant_order_state",
+            )?.payload.order_id ??
+            reconciliation.target_order_id ??
+            reconciliation.provider_order_id ??
+            reconciliation.merchant_order_ids[0];
           if (!orderId)
             throw new Error(
               "merchant order evidence is required for adapter recovery",
@@ -366,25 +568,21 @@ export async function runIncident(
           });
           await store.audit("recovery_completed", outcome);
         } else {
-          const after =
-            recommendation.action === "reconcile_internal_state"
-              ? VerifiedPaymentStateSchema.parse(reconstruction.current_state)
-              : payment.state;
-          if (recommendation.action === "reconcile_internal_state")
-            await store.updatePayment(bundle.payment_id, after);
+          // Every reconcile_internal_state outcome returns above this branch;
+          // the actions that remain change no payment state.
           const status =
             recommendation.action === "escalate" ? "escalated" : "reconciled";
           await store.completeRecovery(key, {
             action: recommendation.action,
             status,
             before_state: payment.state,
-            after_state: after,
+            after_state: payment.state,
             completed_at: new Date().toISOString(),
           });
           await store.audit("recovery_completed", {
             status,
             before_state: payment.state,
-            after_state: after,
+            after_state: payment.state,
           });
           outcome =
             status === "escalated"
@@ -393,14 +591,14 @@ export async function runIncident(
                   key,
                   payment.state,
                   "merchant-state repair requires operator ownership",
-                  decision.reason,
+                  recommendation.uncertainty,
                 )
               : RecoveryOutcomeSchema.parse({
                   status: "reconciled",
                   action: recommendation.action,
                   idempotency_key: key,
                   before_state: payment.state,
-                  after_state: after,
+                  after_state: payment.state,
                   reason:
                     recommendation.action === "no_action_required"
                       ? "deterministic reconciliation proved no action is required"
@@ -418,6 +616,7 @@ export async function runIncident(
       failureResponse: () => "retry_safe_read",
       async run() {
         if (
+          !reconciliation ||
           !opts.merchantPlatformAdapter ||
           recommendation?.action !== "reconcile_internal_state" ||
           !executionKey
@@ -444,6 +643,11 @@ export async function runIncident(
           orderId,
           amountMinor: payment.amount_minor,
           currency: payment.currency,
+          providerStatus: ["authorized", "authorized_verified"].includes(
+            reconciliation.provider_state,
+          )
+            ? "authorized"
+            : "captured",
         });
         await store.audit("afterstate_observed", afterstateVerification);
         if (afterstateVerification.status === "held")
@@ -452,6 +656,11 @@ export async function runIncident(
             response: "retry_safe_read" as const,
             details: { reasons: afterstateVerification.reasons },
           };
+        if (afterstateVerification.status === "verified") {
+          // The durable payment record carries the verified result so the
+          // reported payment state and the stored row cannot disagree.
+          await store.updatePayment(bundle.payment_id, "paid");
+        }
         if (!outcome && afterstateVerification.status === "verified") {
           const beforeState = executionBeforeState ?? payment.state;
           outcome = RecoveryOutcomeSchema.parse({
@@ -499,26 +708,31 @@ export async function runIncident(
           payment_state: paymentAfter.state,
           afterstate_status: afterstateVerification?.status ?? "not_required",
         };
+        const requiresVerifiedAfterstate =
+          outcome.action === "reconcile_internal_state";
         if (
           (outcome.status === "reconciled" ||
             outcome.status === "already_completed") &&
-          afterstateVerification &&
-          afterstateVerification.status !== "verified"
+          requiresVerifiedAfterstate &&
+          afterstateVerification?.status !== "verified"
         )
           outcome = escalationOutcome(
             recommendation?.action ?? "escalate",
             outcome.idempotency_key,
             outcome.before_state,
-            afterstateVerification.status === "held"
+            afterstateVerification?.status === "held"
               ? "fresh afterstate could not be obtained"
-              : "fresh afterstate did not satisfy the recovery invariant",
-            afterstateVerification.reasons.join("; "),
+              : "verified afterstate is required before terminal reconciliation",
+            afterstateVerification?.reasons.join("; ") ??
+              "no afterstate verification was performed",
           );
         const terminal =
-          outcome.status === "reconciled" ||
-          (outcome.status === "already_completed" &&
-            (!opts.merchantPlatformAdapter ||
-              afterstateVerification?.status === "verified"))
+          (outcome.action === "reconcile_internal_state" ||
+            outcome.action === "no_action_required") &&
+          (outcome.status === "reconciled" ||
+            outcome.status === "already_completed") &&
+          (!requiresVerifiedAfterstate ||
+            afterstateVerification?.status === "verified")
             ? ("close" as const)
             : ("escalate" as const);
         return {
@@ -582,6 +796,7 @@ export async function runIncident(
   paymentAfter ??= await store.payment(saved.payment_id);
   if (!paymentAfter)
     throw new Error(`payment ${saved.payment_id} was not persisted`);
+  recordIncidentClass(reconstruction.incident_class, loop.terminal);
   const auditRecords = await store.auditRecords();
   await store.close();
   return {
@@ -597,9 +812,10 @@ export async function runIncident(
     ...(afterstateVerification
       ? { afterstate_verification: afterstateVerification }
       : {}),
-    payment_state: { ...paymentAfter, state: outcome.after_state },
+    payment_state: paymentAfter,
     audit_records: auditRecords,
     state_path: state,
+    ...(investigationTrace ? { investigation_trace: investigationTrace } : {}),
   };
 }
 

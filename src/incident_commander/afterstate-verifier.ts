@@ -16,6 +16,7 @@ const VerificationContextSchema = z
     orderId: z.string().regex(/^order_[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/),
     amountMinor: z.number().int().safe().positive(),
     currency: z.string().regex(/^[A-Z]{3}$/),
+    providerStatus: z.enum(["captured", "authorized"]).optional(),
   })
   .strict();
 
@@ -63,8 +64,19 @@ function reasonsFor(
     reasons.push("provider payment identity does not match");
   if (provider.order_id !== context.orderId)
     reasons.push("provider order identity does not match");
-  if (provider.status !== "captured" || provider.captured !== true)
-    reasons.push("provider payment is not captured");
+  // The verified afterstate is the provider state the deterministic repair
+  // was based on: a repair justified by a late authorization verifies against
+  // an authorized (or later captured) payment, every other repair against a
+  // captured one.
+  const expectedStatus = context.providerStatus ?? "captured";
+  const statusAccepted =
+    expectedStatus === "authorized"
+      ? provider.status === "authorized" || provider.status === "captured"
+      : provider.status === "captured";
+  if (!statusAccepted)
+    reasons.push(`provider payment is not ${expectedStatus}`);
+  if (provider.captured !== (provider.status === "captured"))
+    reasons.push("provider captured flag conflicts with the reported status");
   if (provider.amount !== context.amountMinor)
     reasons.push("provider amount does not match");
   if (provider.currency !== context.currency)

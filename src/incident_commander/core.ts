@@ -9,3 +9,7 @@ export * from "./store";
 export * from "./recovery-executor";
 export * from "./evidence-gatherer";
 export * from "./closed-loop-controller";
+export * from "./agent-investigator";
+export * from "./playbooks";
+export * from "./live-gateway";
+export * from "./narrative";

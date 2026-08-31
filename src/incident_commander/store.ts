@@ -67,6 +67,9 @@ export class IncidentStore {
   payment(id: string) {
     return this.repository.payment(id);
   }
+  paymentsFor(paymentIds: string[]) {
+    return this.repository.paymentsFor(paymentIds);
+  }
   recovery(key: string) {
     return this.repository.recovery(key);
   }
@@ -101,8 +104,17 @@ export class IncidentStore {
   updatePayment(...args: Parameters<IncidentRepository["updatePayment"]>) {
     return this.repository.updatePayment(...args);
   }
-  audit(...args: Parameters<IncidentRepository["audit"]>) {
-    return this.repository.audit(...args);
+  async audit(eventType: string, payload: unknown) {
+    // Every audit record carries the store tenant so governance rows and
+    // derived metrics can be scoped per tenant.
+    const enriched =
+      payload !== null &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      (payload as Record<string, unknown>).tenant_id === undefined
+        ? { ...(payload as Record<string, unknown>), tenant_id: this.tenantId }
+        : payload;
+    return this.repository.audit(eventType, enriched);
   }
   auditRecords() {
     return this.repository.auditRecords();
@@ -112,6 +124,9 @@ export class IncidentStore {
   }
   progress(...args: Parameters<IncidentRepository["progress"]>) {
     return this.repository.progress(...args);
+  }
+  progressFor(...args: Parameters<IncidentRepository["progressFor"]>) {
+    return this.repository.progressFor(...args);
   }
   latestProgress(...args: Parameters<IncidentRepository["latestProgress"]>) {
     return this.repository.latestProgress(...args);

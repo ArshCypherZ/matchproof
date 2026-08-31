@@ -715,10 +715,69 @@ export const RecommendationSchema = z
     evidence_ids: z.array(z.string().min(1)).min(1),
   })
   .strict();
+export const SafeEvidenceReadSchema = z.enum([
+  "fetch_payment",
+  "fetch_order",
+  "search_events",
+  "fetch_merchant_order",
+  "none",
+]);
+export const MissingFactCodeSchema = z.enum([
+  "merchant_order_state",
+  "merchant_order_identity",
+  "provider_payment_state",
+  "webhook_delivery_status",
+  "callback_delivery_status",
+  "settlement_status",
+  "afterstate_verification",
+  "none",
+]);
+export type MissingFactCode = z.infer<typeof MissingFactCodeSchema>;
+export const ResidualInvestigationSchema = z
+  .object({
+    missing_fact: z.string().min(1).max(500),
+    missing_fact_codes: z.array(MissingFactCodeSchema).max(8).optional(),
+    next_safe_read: z
+      .object({
+        tool: SafeEvidenceReadSchema,
+        reason: z.string().min(1).max(500),
+        expected_fact: z.string().min(1).max(500),
+        evidence_ids: z.array(z.string().min(1)).min(1),
+      })
+      .strict(),
+    runbook: z
+      .object({
+        name: z.enum([
+          "merchant_state_reconciliation",
+          "safe_read_retry",
+          "no_action",
+          "evidence_complete_escalation",
+        ]),
+        rationale: z.string().min(1).max(1_000),
+        stopping_condition: z.string().min(1).max(500),
+      })
+      .strict(),
+    operator_packet: z
+      .object({
+        summary: z.string().min(1).max(1_000),
+        decision_needed: z.string().min(1).max(500),
+        terminal_owner: z.enum([
+          "controller",
+          "payment-operations",
+          "merchant-engineering",
+          "provider-support",
+        ]),
+        evidence_ids: z.array(z.string().min(1)).min(1),
+      })
+      .strict(),
+  })
+  .strict();
+export type ResidualInvestigation = z.infer<typeof ResidualInvestigationSchema>;
 export const DiagnosisSchema = z
   .object({
     hypotheses: z.array(DiagnosisHypothesisSchema).min(1),
     recommendation: RecommendationSchema,
+    investigation: ResidualInvestigationSchema.optional(),
   })
   .strict();
 export const DiagnosisProvenanceSchema = z
@@ -737,6 +796,22 @@ export const DiagnosisProvenanceSchema = z
       .strict()
       .optional(),
     failure_reason: z.string().min(1).optional(),
+    raw_advisory: z
+      .object({
+        content: z.string().max(100_000),
+        format: z.enum(["compact_json", "diagnosis_json", "invalid"]),
+        parsed: z.unknown().optional(),
+        citation_ids: z.array(z.string().min(1)).max(100),
+        canonical_citation_ids: z.array(z.string().min(1)).max(100),
+        invalid_citation_ids: z.array(z.string().min(1)).max(100),
+        citation_valid: z.boolean(),
+        correction_attempt: z.number().int().nonnegative(),
+        corrections: z.array(z.string().min(1)).max(20),
+        validation_error: z.string().max(2_000).optional(),
+        validation_errors: z.array(z.string().min(1).max(2_000)).max(10),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export const DiagnosisOutputSchema = z
@@ -753,6 +828,12 @@ export function parseDiagnosisOutput(
       (hypothesis) => hypothesis.evidence_ids,
     ),
     ...output.diagnosis.recommendation.evidence_ids,
+    ...(output.diagnosis.investigation
+      ? [
+          ...output.diagnosis.investigation.next_safe_read.evidence_ids,
+          ...output.diagnosis.investigation.operator_packet.evidence_ids,
+        ]
+      : []),
   ];
   const invalidEvidenceId = evidenceIds.find(
     (evidenceId) => !canonicalEvidenceIds.has(evidenceId),

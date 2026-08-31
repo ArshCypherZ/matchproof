@@ -1,68 +1,31 @@
-# Payment Operations Controller
+# Matchproof
 
-Payment Operations Controller helps teams investigate payment and order
-exceptions, verify supporting evidence, and resolve or escalate outstanding
-cases.
+Fixes orders left unpaid after a successful Razorpay payment. It finds the
+captured payment, updates the merchant order, checks both records agree, and
+leaves the rest in a review queue with the evidence attached.
 
-## Requirements
+## Docker
 
-- Node.js 22.13 or newer
-- pnpm 11 or newer
-- PostgreSQL and Redis
+```bash
+cp .env.example .env
+docker compose up --build
+```
 
-## Setup
+## Local
 
 ```bash
 pnpm install
 cp .env.example .env
 docker compose up -d postgres redis
-```
-
-Configure Razorpay Test Mode credentials in `.env` for provider checks.
-
-Live diagnosis is optional. Set `GROQ_API_KEY`, `GROQ_MODEL`, and
-`GROQ_TIMEOUT_SECONDS`, then pass `mode: "live"` to `runIncident`. Groq output
-is advisory, schema-validated, citation-checked, and falls back to the
-deterministic reconciliation recommendation on failure.
-
-## Run
-
-```bash
-pnpm run demo -- --mode fixture --state /tmp/payment-operations.sqlite3
-pnpm run razorpay:webhook-server
-```
-
-The webhook endpoint is `POST /webhooks/razorpay`.
-
-When `REDIS_URL` is configured, webhook events and batch records are dispatched
-to BullMQ. Workers can consume `incident-processing`, `evidence-gathering`, and
-`batch-evaluation`; jobs retry with exponential backoff and exhausted jobs are
-published to `dead-letter` for operator escalation.
-
-## Web Application
-
-Development server:
-
-```bash
-pnpm run dev
-```
-
-Production build and server:
-
-```bash
-pnpm run build
+pnpm db:migrate
+pnpm build
 pnpm --dir apps/web start
 ```
 
-The web dashboard displays incident queues, evidence timelines, batch evaluation progress, and baseline metrics.
-
-## Verify
+## Other
 
 ```bash
-pnpm test
-pnpm run test:postgres
-pnpm run typecheck
-pnpm run lint
-pnpm run format:check
-pnpm run build
+pnpm razorpay:webhook-server
+pnpm verify
+pnpm evaluate:full
 ```

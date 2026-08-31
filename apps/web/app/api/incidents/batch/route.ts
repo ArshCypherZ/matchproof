@@ -14,7 +14,10 @@ export async function POST(request: Request) {
   const body = schema.safeParse(await request.json().catch(() => ({})));
   if (!body.success)
     return Response.json(
-      { error: "invalid_body", issues: body.error.issues },
+      {
+        error: "invalid_body",
+        reason: "Send a JSON body with 1 to 1000 incident ids.",
+      },
       { status: 400 },
     );
   const batchId = crypto.randomUUID();

@@ -11,8 +11,8 @@ export type RazorpayMcpProvenance = {
   completed_at: string;
   result: "success" | "denied" | "timeout" | "rate_limited" | "error";
   output?: unknown;
-  output_summary?: string;
-  error?: string;
+  output_summary?: string | undefined;
+  error?: string | undefined;
 };
 export type RazorpayMcpTransport = (call: RazorpayMcpCall) => Promise<unknown>;
 const READ_TOOLS = ["fetch_payment", "fetch_order", "search_events"] as const;
@@ -28,6 +28,34 @@ const classify = (error: unknown): RazorpayMcpProvenance["result"] =>
     : /rate|429|too many/i.test(String(error))
       ? "rate_limited"
       : "error";
+const ENTITY_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/;
+/**
+ * Every read carries the exact input its tool consumes. The payload itself is
+ * part of the trust boundary: a tool name on the allowlist with a malformed or
+ * oversized input is denied before the transport sees it.
+ */
+const readInputError = (
+  tool: RazorpayMcpReadTool,
+  input: Record<string, unknown>,
+): string | undefined => {
+  if (tool === "fetch_payment")
+    return typeof input.payment_id === "string" &&
+      ENTITY_ID.test(input.payment_id)
+      ? undefined
+      : "fetch_payment requires a payment_id entity identifier";
+  if (tool === "fetch_order")
+    return typeof input.order_id === "string" && ENTITY_ID.test(input.order_id)
+      ? undefined
+      : "fetch_order requires an order_id entity identifier";
+  const count = input.count;
+  return count === undefined ||
+    (typeof count === "number" &&
+      Number.isInteger(count) &&
+      count >= 1 &&
+      count <= 100)
+    ? undefined
+    : "search_events count must be an integer from 1 to 100";
+};
 export class RazorpayMcpReadGateway {
   readonly tools = READ_TOOLS;
   constructor(
@@ -53,6 +81,14 @@ export class RazorpayMcpReadGateway {
         completed_at: this.now().toISOString(),
         result: "denied",
         error: "MCP tool is outside the read-only allowlist",
+      };
+    const inputError = readInputError(tool as RazorpayMcpReadTool, input);
+    if (inputError)
+      return {
+        ...base,
+        completed_at: this.now().toISOString(),
+        result: "denied",
+        error: inputError,
       };
     let handle: ReturnType<typeof setTimeout> | undefined;
     try {

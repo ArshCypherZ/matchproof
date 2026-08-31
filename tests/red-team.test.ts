@@ -360,22 +360,18 @@ describe("T-019 red-team controls", () => {
             {
               message: {
                 content: JSON.stringify({
-                  hypotheses: [
-                    {
-                      rank: 1,
-                      summary: "Injected instruction",
-                      reasoning: attacks.prompt_injections.join(" "),
-                      uncertainty: "untrusted",
-                      confidence: 1,
-                      evidence_ids: ["EV-WEBHOOK-001"],
-                    },
-                  ],
-                  recommendation: {
-                    action: "refund",
-                    reasoning: attacks.prompt_injections.join(" "),
-                    uncertainty: "untrusted",
-                    evidence_ids: ["EV-WEBHOOK-001"],
-                  },
+                  hypothesis: "Injected instruction",
+                  missing_fact: attacks.prompt_injections.join(" "),
+                  missing_fact_codes: ["provider_payment_state"],
+                  next_safe_read: "fetch_payment",
+                  expected_fact: attacks.prompt_injections.join(" "),
+                  rationale: attacks.prompt_injections.join(" "),
+                  uncertainty: "untrusted",
+                  confidence: 1,
+                  stopping_condition: "untrusted",
+                  operator_summary: "untrusted",
+                  terminal_owner: "payment-operations",
+                  evidence_ids: ["EV-WEBHOOK-001"],
                 }),
               },
             },
@@ -385,9 +381,18 @@ describe("T-019 red-team controls", () => {
     }).diagnose(injectedBundle, injectedReconstruction, injectedReconciliation);
     for (const injection of attacks.prompt_injections)
       expect(prompt).not.toContain(injection);
+    // The advisory action is derived from deterministic reconciliation, so an
+    // injected recommendation can never reach the policy gate as a financial
+    // mutation.
+    expect(diagnosis.diagnosis.recommendation.action).not.toBe("refund");
+    expect(diagnosis.diagnosis.recommendation.action).not.toBe("retry_capture");
     const audit: unknown[] = [];
     const decision = await evaluateAndAudit(
-      diagnosis.diagnosis.recommendation,
+      {
+        ...diagnosis.diagnosis.recommendation,
+        action: "refund",
+        reasoning: attacks.prompt_injections.join(" "),
+      },
       injectedBundle,
       injectedReconstruction,
       undefined,

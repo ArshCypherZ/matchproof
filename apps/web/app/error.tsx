@@ -16,10 +16,7 @@ export default function ErrorView({
   }, [error]);
 
   return (
-    <main
-      id="main-content"
-      className="mx-auto max-w-[1600px] px-4 py-10 sm:px-6 lg:px-8"
-    >
+    <main id="main-content" tabIndex={-1} className="page-rail py-10 sm:py-14">
       <section className="max-w-2xl border-l-2 border-destructive pl-5">
         <AlertTriangle
           aria-hidden="true"
@@ -29,12 +26,11 @@ export default function ErrorView({
           The application could not load this view
         </h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          No incident action was performed. Retry the safe read to restore the
-          current view.
+          No payment or order changes were made. Try loading the page again.
         </p>
         <Button onClick={retry} className="mt-5" data-icon="inline-start">
           <RotateCcw aria-hidden="true" />
-          Retry read
+          Try again
         </Button>
       </section>
     </main>

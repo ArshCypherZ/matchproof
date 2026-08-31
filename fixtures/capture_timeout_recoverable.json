@@ -1,0 +1,65 @@
+{
+  "incident_id": "inc_capture_timeout_recoverable_001",
+  "payment_id": "pay_capture_timeout_recoverable_001",
+  "idempotency_key": "capture-timeout-recoverable-001",
+  "evidence": [
+    {
+      "evidence_id": "EV-RECOVER-REQUEST-001",
+      "kind": "payment_request",
+      "occurred_at": "2026-08-21T10:00:00.000Z",
+      "received_at": "2026-08-21T10:00:00.000Z",
+      "source": "merchant-payment-service",
+      "payload": {
+        "payment_id": "pay_capture_timeout_recoverable_001",
+        "operation": "capture",
+        "amount_minor": 7000,
+        "currency": "INR",
+        "idempotency_key": "capture-timeout-recoverable-001"
+      }
+    },
+    {
+      "evidence_id": "EV-RECOVER-TIMEOUT-001",
+      "kind": "processor_timeout",
+      "occurred_at": "2026-08-21T10:00:05.000Z",
+      "received_at": "2026-08-21T10:00:05.000Z",
+      "source": "merchant-payment-service",
+      "payload": {
+        "payment_id": "pay_capture_timeout_recoverable_001",
+        "operation": "capture",
+        "timeout_ms": 5000,
+        "idempotency_key": "capture-timeout-recoverable-001"
+      }
+    },
+    {
+      "evidence_id": "EV-RECOVER-INTERNAL-001",
+      "kind": "internal_state",
+      "occurred_at": "2026-08-21T10:00:05.100Z",
+      "received_at": "2026-08-21T10:00:05.100Z",
+      "source": "merchant-order-store",
+      "payload": {
+        "payment_id": "pay_capture_timeout_recoverable_001",
+        "payment_state": "capture_pending",
+        "amount_minor": 7000,
+        "currency": "INR",
+        "operation": "capture",
+        "last_operation_key": "capture-timeout-recoverable-001"
+      }
+    },
+    {
+      "evidence_id": "EV-RECOVER-ORDER-001",
+      "kind": "merchant_order_state",
+      "occurred_at": "2026-08-21T10:00:05.200Z",
+      "received_at": "2026-08-21T10:00:05.200Z",
+      "source": "merchant-order-store",
+      "payload": {
+        "payment_id": "pay_capture_timeout_recoverable_001",
+        "order_id": "order_capture_timeout_recoverable_001",
+        "order_state": "pending",
+        "amount_minor": 7000,
+        "currency": "INR",
+        "operation": "capture",
+        "idempotency_key": "capture-timeout-recoverable-001"
+      }
+    }
+  ]
+}

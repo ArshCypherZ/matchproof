@@ -1,35 +1,44 @@
-import { Database, FlaskConical, Radio, ShieldAlert } from "lucide-react";
+import {
+  Activity,
+  Database,
+  FlaskConical,
+  Radio,
+  ShieldAlert,
+} from "lucide-react";
+import { TechBadge } from "@/components/shared/tech-badge";
 
 const labels = {
   razorpay_test: "Razorpay Test mode",
-  fixture_rehearsal: "Fixture rehearsal",
-  synthetic_evaluation: "Synthetic evaluation",
-  redacted_archetype: "Redacted archetype",
+  fixture_rehearsal: "Simulated exceptions",
+  synthetic_evaluation: "Offline benchmark",
+  redacted_archetype: "Reference case",
+  measured_live: "Live data",
 } as const;
 
 export type SourceKind = keyof typeof labels;
 
-export function SourceBadge({ source }: { source: SourceKind | string }) {
+export function SourceBadge({ source }: { source: string }) {
   const label = labels[source as SourceKind] ?? source;
   const Icon =
     source === "razorpay_test"
       ? Radio
-      : source === "synthetic_evaluation"
-        ? FlaskConical
-        : source === "redacted_archetype"
-          ? ShieldAlert
-          : Database;
+      : source === "measured_live"
+        ? Activity
+        : source === "synthetic_evaluation"
+          ? FlaskConical
+          : source === "redacted_archetype"
+            ? ShieldAlert
+            : Database;
   return (
-    <span className="inline-flex items-center gap-1.5 rounded border border-border bg-surface px-2 py-1 text-xs text-muted-foreground">
-      <Icon
-        aria-hidden="true"
-        className={
-          source === "razorpay_test"
-            ? "size-3.5 text-provider"
-            : "size-3.5 text-primary"
-        }
-      />
+    <TechBadge
+      accent={
+        source === "razorpay_test" || source === "measured_live"
+          ? "provider"
+          : "primary"
+      }
+    >
+      <Icon aria-hidden="true" />
       {label}
-    </span>
+    </TechBadge>
   );
 }

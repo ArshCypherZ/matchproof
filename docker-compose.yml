@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     ports:
-      - "6379:6379"
+      - "9997:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -28,6 +28,26 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3101:3000"
+    environment:
+      - DATABASE_URL=postgres://incident:incident@postgres:5432/incident_commander
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+      - PORT=3000
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   redis_data:

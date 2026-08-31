@@ -1,7 +1,7 @@
 {
-  "name": "razorpay-incident-commander",
+  "name": "matchproof",
   "version": "1.0.0",
-  "description": "O2 reconstructs an ambiguous payment incident, adds an evidence-grounded AI diagnosis, and lets deterministic controls authorize a bounded, auditable merchant-state reconciliation.",
+  "description": "Fixes orders left unpaid after a successful Razorpay payment. It finds the captured payment, updates the merchant order, checks both records agree, and leaves the rest in a review queue with the evidence attached.",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
@@ -9,6 +9,7 @@
   "packageManager": "pnpm@11.23.0+sha512.f00082e5b283a199b74e079da28d155c008fe232f44c8a06ea7ddfa014ecf719fc362f790ecc67b28106ddac2afb24c49a9a079159da560b2ce7d1e98efd11af",
   "scripts": {
     "test": "vitest run",
+    "verify": "bash scripts/verify-local.sh",
     "test:postgres": "RUN_POSTGRES_TESTS=1 vitest run tests/postgres.test.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write src tests apps",
@@ -18,19 +19,21 @@
     "test:razorpay:e2e": "RUN_RAZORPAY_LIVE_E2E=1 node --env-file=.env node_modules/vitest/vitest.mjs run tests/razorpay-live-e2e.test.ts",
     "razorpay:webhook-server": "tsx src/incident_commander/webhook-server.ts",
     "demo": "tsx src/incident_commander/demo.ts",
-    "evaluate:baseline": "tsx src/evaluation/deterministic-baseline.ts",
-    "evaluate:full": "tsx src/evaluation/full-evaluation.ts",
+    "evaluate:baseline": "node --import tsx src/evaluation/deterministic-baseline.ts",
+    "evaluate:full": "node --env-file=.env --import tsx src/evaluation/full-evaluation.ts",
     "db:generate": "drizzle-kit generate",
     "db:generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts",
     "db:migrate": "drizzle-kit migrate",
     "dev": "pnpm --dir apps/web dev",
-    "build": "pnpm --dir apps/web build"
+    "build": "pnpm --dir apps/web build --webpack"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
+    "@valkey/valkey-glide": "^2.5.1",
     "better-sqlite3": "^13.0.3",
     "bullmq": "^6.2.0",
     "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
     "groq-sdk": "^1.5.0",
     "ioredis": "^6.0.0",
     "pg": "^8.23.0",

@@ -1,8 +1,14 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { IncidentStore } from "../../../src/incident_commander/store";
 import { reconstruct, reconcile } from "../../../src/incident_commander/core";
-import { IncidentBundleSchema } from "../../../src/domain/schemas";
+import {
+  IncidentBundleSchema,
+  type IncidentBundle,
+} from "../../../src/domain/schemas";
 
 const loopSteps = [
   "detect",
@@ -20,20 +26,48 @@ const loopSteps = [
 const tenantHeader = "x-tenant-id";
 const actorHeader = "x-operator-id";
 
-export function requestContext(request: Request) {
+export function requestContext(request: Request | Headers) {
+  const headers = request instanceof Headers ? request : request.headers;
   return {
-    tenantId: request.headers.get(tenantHeader) || "default-merchant",
-    actor: request.headers.get(actorHeader) || "operator",
+    tenantId: headers.get(tenantHeader) || "default-merchant",
+    actor: headers.get(actorHeader) || "operator",
   };
 }
 
+const stores = new Map<string, IncidentStore>();
+const initializing = new Map<string, Promise<void>>();
+
+function incidentStatePath() {
+  const configuredPath = process.env.INCIDENT_STATE_PATH?.trim();
+  if (configuredPath) return configuredPath;
+  if (process.env.DATABASE_URL?.trim()) return "postgresql";
+
+  const cwd = process.cwd();
+  const projectRoot = cwd.endsWith(path.join("apps", "web"))
+    ? path.resolve(cwd, "../..")
+    : cwd;
+  const runtimeDirectory = path.join(projectRoot, ".runtime");
+  mkdirSync(runtimeDirectory, { recursive: true });
+  return path.join(runtimeDirectory, "incident-state.sqlite3");
+}
+
 export function storeFor(tenantId: string) {
-  return new IncidentStore(
-    process.env.INCIDENT_STATE_PATH || "postgresql",
+  const existing = stores.get(tenantId);
+  if (existing) return existing;
+  const store = new IncidentStore(
+    incidentStatePath(),
     false,
     process.env.PROCESSOR_WEBHOOK_SECRET || "test-prototype-secret",
     tenantId,
   );
+  stores.set(tenantId, store);
+  const ready = store.initialize().catch((error) => {
+    stores.delete(tenantId);
+    initializing.delete(tenantId);
+    throw error;
+  });
+  initializing.set(tenantId, ready);
+  return store;
 }
 
 export async function withStore<T>(
@@ -41,16 +75,14 @@ export async function withStore<T>(
   fn: (store: IncidentStore) => Promise<T>,
 ) {
   const store = storeFor(tenantId);
-  await store.initialize();
-  try {
-    return await fn(store);
-  } finally {
-    await store.close();
-  }
+  await (initializing.get(tenantId) ?? Promise.resolve());
+  return fn(store);
 }
 
 function newestTimestamp(values: string[]) {
-  return values.sort((left, right) => Date.parse(right) - Date.parse(left))[0];
+  return values.sort(
+    (left, right) => Date.parse(right) - Date.parse(left),
+  )[0] as string;
 }
 
 function sourceKind(incidentId: string) {
@@ -68,18 +100,61 @@ function currentProgress(
   );
 }
 
+// Builds DTOs for a whole list of bundles with two queries (progress +
+// payments) instead of two per incident.
+export async function incidentDtosForBundles(
+  store: IncidentStore,
+  bundles: IncidentBundle[],
+) {
+  const [progressRows, paymentRows] = await Promise.all([
+    store.progressFor(bundles.map((bundle) => bundle.incident_id)),
+    store.paymentsFor(bundles.map((bundle) => bundle.payment_id)),
+  ]);
+  const progressByIncident = new Map<
+    string,
+    Awaited<ReturnType<IncidentStore["progress"]>>
+  >();
+  for (const row of progressRows) {
+    const existing = progressByIncident.get(row.incident_id);
+    if (existing) existing.push(row);
+    else progressByIncident.set(row.incident_id, [row]);
+  }
+  const paymentById = new Map(
+    paymentRows.map((row) => [row.payment_id, row] as const),
+  );
+  return bundles.map((bundle) =>
+    incidentDto(
+      bundle,
+      progressByIncident.get(bundle.incident_id) ?? [],
+      paymentById.get(bundle.payment_id),
+    ),
+  );
+}
+
 export async function listIncidentDtos(tenantId: string) {
+  return withStore(tenantId, async (store) =>
+    incidentDtosForBundles(store, await store.listIncidents(tenantId)),
+  );
+}
+
+// A change token over the same store rows the DTOs read. Live refresh polls
+// this token instead of pulling every record with its evidence on each
+// tick; when the digest moves, the client refetches the page.
+export async function incidentListFingerprint(tenantId: string) {
   return withStore(tenantId, async (store) => {
     const bundles = await store.listIncidents(tenantId);
-    return Promise.all(
-      bundles.map(async (bundle) =>
-        incidentDto(
-          bundle,
-          await store.progress(bundle.incident_id),
-          await store.payment(bundle.payment_id),
-        ),
-      ),
-    );
+    const [progressRows, paymentRows] = await Promise.all([
+      store.progressFor(bundles.map((bundle) => bundle.incident_id)),
+      store.paymentsFor(bundles.map((bundle) => bundle.payment_id)),
+    ]);
+    // Row order from the database is not guaranteed to repeat, so sort the
+    // serialized rows before hashing: same data in, same digest out.
+    const rows = [...bundles, ...progressRows, ...paymentRows]
+      .map((row) => JSON.stringify(row))
+      .sort();
+    const digest = createHash("sha256");
+    for (const row of rows) digest.update(row, "utf8");
+    return digest.digest("hex");
   });
 }
 
@@ -96,6 +171,33 @@ export async function getIncidentDto(tenantId: string, incidentId: string) {
   });
 }
 
+// The audit repository nests each event's original payload under
+// `payload.details`, so a batch_started event from the batch route carries
+// its batch_id and incident_ids one level down, at `payload.details.details`.
+// Older events carry them directly on `payload.details`; resolve both.
+export function batchEventFields(payload: { details: unknown }) {
+  const record =
+    payload.details && typeof payload.details === "object"
+      ? (payload.details as Record<string, unknown>)
+      : {};
+  const nested =
+    record.details && typeof record.details === "object"
+      ? (record.details as Record<string, unknown>)
+      : {};
+  const batchId =
+    typeof record.batch_id === "string"
+      ? record.batch_id
+      : typeof nested.batch_id === "string"
+        ? nested.batch_id
+        : undefined;
+  const incidentIds = Array.isArray(record.incident_ids)
+    ? (record.incident_ids as string[])
+    : Array.isArray(nested.incident_ids)
+      ? (nested.incident_ids as string[])
+      : [];
+  return { batchId, incidentIds };
+}
+
 export async function listBatchDtos(tenantId: string) {
   return withStore(tenantId, async (store) => {
     const audits = await store.auditRecords();
@@ -106,13 +208,10 @@ export async function listBatchDtos(tenantId: string) {
           event.payload.tenant_id === tenantId,
       )
       .map((event) => {
-        const details = event.payload.details as {
-          batch_id?: string;
-          incident_ids?: string[];
-        };
+        const { batchId, incidentIds } = batchEventFields(event.payload);
         return {
-          batch_id: details.batch_id ?? String(event.sequence),
-          incident_ids: details.incident_ids ?? [],
+          batch_id: batchId ?? String(event.sequence),
+          incident_ids: incidentIds,
           started_at: event.recorded_at,
         };
       })
@@ -127,28 +226,19 @@ export async function getBatchDto(tenantId: string, batchId: string) {
       (item) =>
         item.event_type === "batch_started" &&
         item.payload.tenant_id === tenantId &&
-        (item.payload.details as { batch_id?: string }).batch_id === batchId,
+        batchEventFields(item.payload).batchId === batchId,
     );
     if (!event) return null;
-    const detail = event.payload.details as { incident_ids?: string[] };
-    const incidentIds = detail.incident_ids ?? [];
-    const incidents = await Promise.all(
-      incidentIds.map(async (incidentId) => {
-        const bundle = await store.incident(incidentId);
-        if (!bundle) return null;
-        return incidentDto(
-          bundle,
-          await store.progress(incidentId),
-          await store.payment(bundle.payment_id),
-        );
-      }),
+    const incidentIds = batchEventFields(event.payload).incidentIds;
+    const bundles = await Promise.all(
+      incidentIds.map(async (incidentId) => store.incident(incidentId)),
     );
+    const present: IncidentBundle[] = [];
+    for (const bundle of bundles) if (bundle) present.push(bundle);
     return {
       batch_id: batchId,
       started_at: event.recorded_at,
-      incidents: incidents.filter((item): item is NonNullable<typeof item> =>
-        Boolean(item),
-      ),
+      incidents: await incidentDtosForBundles(store, present),
     };
   });
 }
@@ -173,7 +263,7 @@ export function incidentDto(
   ]);
   const startedAt = [...evidenceTimes].sort(
     (left, right) => Date.parse(left) - Date.parse(right),
-  )[0];
+  )[0] as string;
   return {
     incident_id: parsed.incident_id,
     payment_id: parsed.payment_id,

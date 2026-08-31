@@ -57,12 +57,15 @@ describe("webhook inbox", () => {
     );
     await database.initialize();
     const store = new RazorpayWebhookInbox(database);
-    const raw = paymentBody("payment.captured", 1_724_400_000);
+    const raw = paymentBody(
+      "payment.captured",
+      Math.floor(Date.now() / 1000) - 10,
+    );
     const input = {
       rawBody: raw,
       signature: signed(raw),
       eventId: "evt_bridge_123",
-      receivedAt: "2026-08-24T00:00:02.000Z",
+      receivedAt: new Date().toISOString(),
       webhookSecret: secret,
     };
     const stored = await store.ingest(input);
@@ -108,8 +111,14 @@ describe("webhook inbox", () => {
     );
     await database.initialize();
     const store = new RazorpayWebhookInbox(database);
-    const authorized = paymentBody("payment.authorized", 1_724_400_000);
-    const captured = paymentBody("payment.captured", 1_724_400_010);
+    const authorized = paymentBody(
+      "payment.authorized",
+      Math.floor(Date.now() / 1000) - 30,
+    );
+    const captured = paymentBody(
+      "payment.captured",
+      Math.floor(Date.now() / 1000) - 20,
+    );
     for (const [raw, eventId] of [
       [captured, "evt_ordered_2"],
       [authorized, "evt_ordered_1"],
@@ -118,7 +127,7 @@ describe("webhook inbox", () => {
         rawBody: raw,
         signature: signed(raw),
         eventId,
-        receivedAt: "2026-08-24T00:00:10.000Z",
+        receivedAt: new Date().toISOString(),
         webhookSecret: secret,
       });
     }
@@ -235,9 +244,7 @@ describe("webhook inbox", () => {
             amount: 125000,
             currency: "INR",
             order_id: "order_demo_001",
-            created_at: Math.floor(
-              Date.parse("2026-08-21T10:00:04.000Z") / 1000,
-            ),
+            created_at: Math.floor(Date.now() / 1000) - 10,
           },
         },
       },
@@ -246,7 +253,7 @@ describe("webhook inbox", () => {
       rawBody: raw,
       signature: signed(raw),
       eventId: "evt_late_123",
-      receivedAt: "2026-08-24T00:00:10.000Z",
+      receivedAt: new Date().toISOString(),
       webhookSecret: secret,
     });
     const result = await store.process("evt_late_123", {
