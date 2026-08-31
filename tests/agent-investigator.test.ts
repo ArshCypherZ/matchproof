@@ -50,7 +50,8 @@ const diagnosis = (
           rank: 1,
           summary: "Provider evidence needs one bounded verification.",
           reasoning: "The cited timeline leaves a residual fact unresolved.",
-          uncertainty: "The fresh provider post-repair state is not yet observed.",
+          uncertainty:
+            "The fresh provider post-repair state is not yet observed.",
           confidence: 0.8,
           evidence_ids: [evidenceId],
         },
@@ -74,8 +75,7 @@ const diagnosis = (
             action === "escalate"
               ? "evidence_complete_escalation"
               : "safe_read_retry",
-          rationale:
-            "Use a bounded read before rule-based policy evaluation.",
+          rationale: "Use a bounded read before rule-based policy evaluation.",
           stopping_condition: "Stop after verified evidence or escalation.",
         },
         operator_packet: {

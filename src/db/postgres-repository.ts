@@ -365,7 +365,9 @@ export class PostgresIncidentRepository implements IncidentRepository {
       .select()
       .from(postRepairStateObservations)
       .where(eq(postRepairStateObservations.executionKey, executionKey));
-    return row ? PostRepairStateObservationSchema.parse(row.observation) : undefined;
+    return row
+      ? PostRepairStateObservationSchema.parse(row.observation)
+      : undefined;
   }
   async audit(type: string, payload: unknown) {
     const governancePayload = createAuditGovernancePayload(type, payload);

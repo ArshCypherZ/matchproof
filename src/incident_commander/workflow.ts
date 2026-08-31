@@ -181,7 +181,8 @@ export async function runIncident(
   let gateDecisions: PolicyGateDecision[] = [];
   let decision: PolicyGateDecision | undefined;
   let outcome: RecoveryOutcome | undefined;
-  let postRepairStateVerification: PostRepairStateVerificationResult | undefined;
+  let postRepairStateVerification:
+    PostRepairStateVerificationResult | undefined;
   let paymentAfter:
     NonNullable<Awaited<ReturnType<IncidentStore["payment"]>>> | undefined;
   // A merchant post-repair state contract is required for every merchant-state
@@ -649,7 +650,10 @@ export async function runIncident(
             ? "authorized"
             : "captured",
         });
-        await store.audit("post_repair_state_observed", postRepairStateVerification);
+        await store.audit(
+          "post_repair_state_observed",
+          postRepairStateVerification,
+        );
         if (postRepairStateVerification.status === "held")
           return {
             status: "retry" as const,
@@ -690,7 +694,9 @@ export async function runIncident(
           );
         return {
           status: "completed" as const,
-          details: { post_repair_state_status: postRepairStateVerification.status },
+          details: {
+            post_repair_state_status: postRepairStateVerification.status,
+          },
         };
       },
     },
@@ -706,7 +712,8 @@ export async function runIncident(
           );
         const details = {
           payment_state: paymentAfter.state,
-          post_repair_state_status: postRepairStateVerification?.status ?? "not_required",
+          post_repair_state_status:
+            postRepairStateVerification?.status ?? "not_required",
         };
         const requiresVerifiedPostRepairState =
           outcome.action === "reconcile_internal_state";

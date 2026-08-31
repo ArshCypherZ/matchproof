@@ -159,9 +159,7 @@ export class PlaybookDiagnosisAdapter implements InvestigationDiagnosisAdapter {
     this.readPlan = options.readPlan ?? [];
     this.advisory = options.advisory;
     this.availableReadTools = options.availableReadTools ?? DEFAULT_READ_TOOLS;
-    this.provider = options.advisory
-      ? "cluster-replay"
-      : "rule-based-playbook";
+    this.provider = options.advisory ? "cluster-replay" : "rule-based-playbook";
     this.model = options.advisory ? "cluster-replay-v1" : "tier0-playbook-v1";
   }
 

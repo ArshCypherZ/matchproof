@@ -282,9 +282,8 @@ export async function POST(request: Request) {
           merchantPlatformAdapter: new PostgresMerchantPlatformAdapter(
             connection.db,
           ),
-          providerPostRepairStateAdapter: new RazorpayProviderPostRepairStateAdapter(
-            razorpay,
-          ),
+          providerPostRepairStateAdapter:
+            new RazorpayProviderPostRepairStateAdapter(razorpay),
           diagnosisAdapter: new PlaybookDiagnosisAdapter(),
           tenantId,
         },

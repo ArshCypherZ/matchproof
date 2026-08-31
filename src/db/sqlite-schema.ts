@@ -100,10 +100,13 @@ export const recoveryAttempts = sqliteTable("recovery_attempts", {
   startedAt: text("started_at").notNull(),
   completedAt: text("completed_at"),
 });
-export const postRepairStateObservations = sqliteTable("post_repair_state_observations", {
-  executionKey: text("execution_key").primaryKey(),
-  observation: text("observation").notNull(),
-});
+export const postRepairStateObservations = sqliteTable(
+  "post_repair_state_observations",
+  {
+    executionKey: text("execution_key").primaryKey(),
+    observation: text("observation").notNull(),
+  },
+);
 export const auditEvents = sqliteTable("audit_events", {
   sequence: integer("sequence").primaryKey({ autoIncrement: true }),
   recordedAt: text("recorded_at").notNull(),

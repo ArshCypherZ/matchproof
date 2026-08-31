@@ -197,7 +197,9 @@ export async function executeApprovedRecovery(
   });
   await store.setProgress(incidentId, "observe", "completed", {
     post_repair_state_status: postRepairState.status,
-    ...(postRepairState.reasons.length ? { reasons: postRepairState.reasons } : {}),
+    ...(postRepairState.reasons.length
+      ? { reasons: postRepairState.reasons }
+      : {}),
   });
   const verified =
     outcome.status === "reconciled" && postRepairState.status === "verified";
@@ -209,7 +211,9 @@ export async function executeApprovedRecovery(
       action: "approve",
       outcome: outcome.status,
       post_repair_state_status: postRepairState.status,
-      ...(postRepairState.reasons.length ? { reasons: postRepairState.reasons } : {}),
+      ...(postRepairState.reasons.length
+        ? { reasons: postRepairState.reasons }
+        : {}),
     },
   );
 

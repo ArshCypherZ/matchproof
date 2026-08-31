@@ -73,14 +73,11 @@ describe("rule-based reconciliation", () => {
     ["late_authorized", "late_authorized", "reconcile_internal_state"],
     ["timeout_after_mutation", "capture_timeout", "reconcile_internal_state"],
     ["settlement_exception", "settlement_exception", "escalate"],
-  ] as const)(
-    "covers %s by rule",
-    (fixture, incidentClass, resolution) => {
-      const result = reconcile(load(fixture));
-      expect(result.incident_class).toBe(incidentClass);
-      expect(result.resolution).toBe(resolution);
-    },
-  );
+  ] as const)("covers %s by rule", (fixture, incidentClass, resolution) => {
+    const result = reconcile(load(fixture));
+    expect(result.incident_class).toBe(incidentClass);
+    expect(result.resolution).toBe(resolution);
+  });
 
   it("proves no action is required when paid provider and merchant agree", () => {
     const bundle = load("paid_pending");

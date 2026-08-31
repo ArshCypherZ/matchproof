@@ -621,7 +621,9 @@ export function postRepairStateVerificationCoverage(
   rows: readonly { post_repair_state_verified: boolean }[],
 ): number {
   if (!rows.length) return 0;
-  return rows.filter((row) => row.post_repair_state_verified).length / rows.length;
+  return (
+    rows.filter((row) => row.post_repair_state_verified).length / rows.length
+  );
 }
 
 function matchingLabel(
@@ -800,10 +802,14 @@ async function runSafetyEvaluation(): Promise<SafetyEvaluation> {
     maxProviderFreshnessMs: 300_000,
   });
 
-  const postRepairStateObservations = new Map<string, PostRepairStateObservation>();
+  const postRepairStateObservations = new Map<
+    string,
+    PostRepairStateObservation
+  >();
   const contradictory = await new PostRepairStateVerifier(
     {
-      postRepairStateObservation: async (key) => postRepairStateObservations.get(key),
+      postRepairStateObservation: async (key) =>
+        postRepairStateObservations.get(key),
       savePostRepairStateObservation: async (key, observation) => {
         if (postRepairStateObservations.has(key)) return false;
         postRepairStateObservations.set(key, observation);
@@ -1382,7 +1388,8 @@ async function evaluateMode(
             terminal_diagnosis: result.diagnosis,
             rule_based_reconciliation: result.reconciliation,
             investigation_trace: result.investigation_trace ?? [],
-            post_repair_state_verification: result.post_repair_state_verification ?? null,
+            post_repair_state_verification:
+              result.post_repair_state_verification ?? null,
             outcome: result.outcome,
             model_provenance: result.model_provenance,
           },
@@ -1530,7 +1537,8 @@ async function evaluateMode(
     acknowledgement_loss_injected:
       safetyEvaluation.checks.lost_ack_replay_without_second_mutation.attempts,
     contradictory_post_repair_state:
-      safetyEvaluation.checks.contradictory_post_repair_state_escalation.attempts,
+      safetyEvaluation.checks.contradictory_post_repair_state_escalation
+        .attempts,
   };
   const lostAckReplay =
     safetyEvaluation.checks.lost_ack_replay_without_second_mutation;
@@ -1601,7 +1609,8 @@ async function evaluateMode(
       ? verifiedRows.reduce((s, r) => s + r.duration_ms, 0) /
         verifiedRows.length
       : 0,
-    post_repair_state_verification_coverage: postRepairStateVerificationCoverage(rows),
+    post_repair_state_verification_coverage:
+      postRepairStateVerificationCoverage(rows),
     duplicate_action_prevention_count: duplicateActionPreventionCount,
     normalized_citation_validity:
       rows.filter((r) => r.normalized_citations_valid).length / total,
@@ -1739,11 +1748,7 @@ export async function runFullEvaluation(
   );
   const safetyEvaluation = await runSafetyEvaluation();
   resetMetrics();
-  const baseline = await evaluateMode(
-    heldOut,
-    "baseline",
-    safetyEvaluation,
-  );
+  const baseline = await evaluateMode(heldOut, "baseline", safetyEvaluation);
   resetMetrics();
   const ai = await evaluateMode(
     heldOut,
@@ -1754,8 +1759,7 @@ export async function runFullEvaluation(
   const comparison = Object.entries(baseline.metrics).flatMap(
     ([metric, baselineValue]) => {
       const aiValue = ai.metrics[metric as keyof EvaluationMetrics];
-      return typeof baselineValue === "number" &&
-        typeof aiValue === "number"
+      return typeof baselineValue === "number" && typeof aiValue === "number"
         ? [
             {
               metric,

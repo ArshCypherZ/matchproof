@@ -58,7 +58,8 @@ export const FAILURE_SCENARIOS = [
     title: "Merchant acknowledgement loss",
     step: "execute",
     response: "verify_state",
-    outcome: "Hold execution and verify post-repair state without another write.",
+    outcome:
+      "Hold execution and verify post-repair state without another write.",
   },
   {
     id: "model_failure",

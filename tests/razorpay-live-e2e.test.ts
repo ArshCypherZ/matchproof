@@ -231,9 +231,9 @@ describeLive("Razorpay Test-mode end-to-end loop", () => {
       expect(result.post_repair_state_verification?.status).toBe("verified");
       if (result.post_repair_state_verification?.status !== "verified")
         throw new Error("live post-repair state was not verified");
-      expect(result.post_repair_state_verification.observation.invariant_holds).toBe(
-        true,
-      );
+      expect(
+        result.post_repair_state_verification.observation.invariant_holds,
+      ).toBe(true);
       expect(result.payment_state.state).toBe("paid");
       await expect(
         new SqliteMerchantPlatformAdapter(

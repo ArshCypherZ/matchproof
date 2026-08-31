@@ -561,9 +561,11 @@ describe("T-019 red-team controls", () => {
       currency: "INR",
     };
     await expect(
-      new PostRepairStateVerifier(postRepairStateRepository, provider, merchant).verify(
-        verificationContext,
-      ),
+      new PostRepairStateVerifier(
+        postRepairStateRepository,
+        provider,
+        merchant,
+      ).verify(verificationContext),
     ).resolves.toMatchObject({ status: "verified", replayed: false });
     const restartProvider: ProviderPostRepairStateAdapter = {
       fetchPayment: vi.fn(),

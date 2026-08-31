@@ -44,9 +44,7 @@ describe("baseline", () => {
   });
 
   it("reports reproducible baseline safety metrics", async () => {
-    const report = await runBaseline(
-      EVALUATION_DATASET.slice(0, 8),
-    );
+    const report = await runBaseline(EVALUATION_DATASET.slice(0, 8));
     expect(report.record_count).toBe(8);
     expect(report.metrics.enforced_unsafe_recommendation_count).toBe(0);
     expect(report.metrics.false_match_rate).toBe(0);

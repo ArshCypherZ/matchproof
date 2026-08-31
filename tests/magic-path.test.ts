@@ -376,7 +376,8 @@ describe("payment incident workflow", () => {
                     "Signed evidence confirms the provider capture event.",
                   uncertainty: "The callback acknowledgement was lost.",
                   confidence: 0.9,
-                  stopping_condition: "Stop after the post-repair state is verified.",
+                  stopping_condition:
+                    "Stop after the post-repair state is verified.",
                   operator_summary:
                     "Provider capture is verified while the merchant acknowledgement is missing.",
                   terminal_owner: "controller",
@@ -442,7 +443,8 @@ describe("payment incident workflow", () => {
                 rationale: "Provider evidence is present.",
                 uncertainty: "Merchant acknowledgement is unresolved.",
                 confidence: 0.7,
-                stopping_condition: "Stop after the post-repair state is verified.",
+                stopping_condition:
+                  "Stop after the post-repair state is verified.",
                 operator_summary: "Provider capture requires merchant repair.",
                 terminal_owner: "controller",
                 evidence_ids: [id],
@@ -884,7 +886,9 @@ describe("payment incident workflow", () => {
   });
   it("closes merchant reconciliation after a verified post-repair state and replays it without another write", async () => {
     const fixturePath = path.resolve("fixtures/paid_pending.json");
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "app-post-repair-state-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "app-post-repair-state-"),
+    );
     const state = path.join(dir, "incident");
     const timestamp = "2026-08-21T10:00:03.000Z";
     let merchantState: "pending" | "paid" = "pending";

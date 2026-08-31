@@ -779,7 +779,8 @@ export class FixtureDiagnosisAdapter {
             "Whether the merchant acknowledgement was lost after provider capture.",
           next_safe_read: {
             tool: "fetch_merchant_order",
-            reason: "Confirm the merchant order post-repair state before closure.",
+            reason:
+              "Confirm the merchant order post-repair state before closure.",
             expected_fact:
               "The merchant order is paid and linked to the captured payment.",
             evidence_ids: evidenceIds.length ? evidenceIds : [fallbackEvidence],

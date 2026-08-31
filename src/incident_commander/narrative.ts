@@ -69,9 +69,7 @@ const buildPrompt = (input: NarrativeBatchInput) =>
     })),
   });
 
-const ruleBasedNarrative = (
-  input: NarrativeBatchInput,
-): NarrativeReport => {
+const ruleBasedNarrative = (input: NarrativeBatchInput): NarrativeReport => {
   const classes = Object.entries(input.by_incident_class)
     .map(
       ([label, counts]) =>

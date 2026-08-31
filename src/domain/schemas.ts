@@ -1038,4 +1038,6 @@ export type RazorpayPaymentCollection = z.infer<
 >;
 export type PolicyGateDecision = z.infer<typeof PolicyGateDecisionSchema>;
 export type RecoveryOutcome = z.infer<typeof RecoveryOutcomeSchema>;
-export type PostRepairStateObservation = z.infer<typeof PostRepairStateObservationSchema>;
+export type PostRepairStateObservation = z.infer<
+  typeof PostRepairStateObservationSchema
+>;

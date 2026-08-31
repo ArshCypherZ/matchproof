@@ -96,7 +96,10 @@ export async function runBaseline(
             ...(merchant
               ? {
                   merchantPlatformAdapter: merchant.adapter,
-                  providerPostRepairStateAdapter: fixtureProvider(fixture, record),
+                  providerPostRepairStateAdapter: fixtureProvider(
+                    fixture,
+                    record,
+                  ),
                   ...(record.investigation_gateway
                     ? {
                         mcpGateway: investigationGateway(fixture, record),
@@ -239,7 +242,8 @@ export async function runBaseline(
       runbook_count: runbook,
       no_action_count: noAction,
       ambiguous_count: ambiguous,
-      post_repair_state_verification_coverage: postRepairStateVerificationCoverage(rows),
+      post_repair_state_verification_coverage:
+        postRepairStateVerificationCoverage(rows),
       duplicate_action_prevention_count: duplicatePrevention,
       enforced_unsafe_recommendation_count: unsafeRecommendations,
       unsafe_side_effect_count: unsafeSideEffects,

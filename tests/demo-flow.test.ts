@@ -146,9 +146,8 @@ describe("demo staged discrepancy", () => {
         processorSecret,
         evidenceGatherer: new EvidenceGatherer({ client: fakeClient }),
         merchantPlatformAdapter: new SqliteMerchantPlatformAdapter(merchant.db),
-        providerPostRepairStateAdapter: new RazorpayProviderPostRepairStateAdapter(
-          fakeClient,
-        ),
+        providerPostRepairStateAdapter:
+          new RazorpayProviderPostRepairStateAdapter(fakeClient),
         diagnosisAdapter: new PlaybookDiagnosisAdapter(),
         tenantId,
       });
