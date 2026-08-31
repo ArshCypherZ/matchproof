@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" font-family="Helvetica, Arial, sans-serif" role="img" aria-label="Matchproof">
+  <rect width="1200" height="320" fill="#f2eee5"/>
+  <rect x="8" y="8" width="1184" height="304" rx="16" fill="none" stroke="#cec7ba" stroke-width="1.5"/>
+
+  <text x="600" y="128" text-anchor="middle" font-size="72" font-weight="bold" fill="#181715" letter-spacing="1">Matchproof</text>
+  <text x="600" y="170" text-anchor="middle" font-size="22" fill="#57534a">payment captured, order still pending &#8212; found, fixed, proven</text>
+
+  <g font-size="13.5" fill="#57534a">
+    <rect x="322" y="216" width="152" height="40" rx="8" fill="#fbf8f1" stroke="#cec7ba"/>
+    <text x="398" y="241" text-anchor="middle">payment captured</text>
+
+    <path d="M 482 236 L 530 236" fill="none" stroke="#625f59" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+    <rect x="532" y="216" width="140" height="40" rx="8" fill="#fbf8f1" stroke="#cec7ba"/>
+    <text x="602" y="241" text-anchor="middle">our algorithm</text>
+
+    <path d="M 682 236 L 724 236" fill="none" stroke="#625f59" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+    <rect x="736" y="216" width="148" height="40" rx="8" fill="#fbf8f1" stroke="#cec7ba"/>
+    <text x="810" y="241" text-anchor="middle">order aligned &#10003;</text>
+  </g>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#625f59"/>
+    </marker>
+  </defs>
+</svg>
