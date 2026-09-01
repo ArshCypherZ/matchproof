@@ -3,16 +3,20 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
-import { requestContext, listIncidentDtos } from "@/lib/incidents";
+import {
+  requestContext,
+  listIncidentDtos,
+  getIncidentDto,
+} from "@/lib/incidents";
 import { filterIncidentViews } from "@/lib/incident-query";
 import {
   CLASS_FACETS,
+  CLASS_LABELS,
   STATUS_FACETS,
   facetQuery,
   normalizeFacet,
 } from "@/components/incidents/queue-facets";
 import { IncidentPager } from "@/components/incidents/incident-pager";
-import { CloseStamp } from "@/components/shared/close-stamp";
 import { SourceBadge } from "@/components/shared/source-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatDate, formatMoney } from "@/components/shared/format";
@@ -23,17 +27,30 @@ import { PolicyDecision } from "@/components/workbench/policy-decision";
 import { PostRepairStateComparison } from "@/components/workbench/post-repair-state-comparison";
 import { IncidentActions } from "@/components/workbench/incident-actions";
 import { WorkbenchSections } from "@/components/workbench/workbench-sections";
-import { SectionRail } from "@/components/workbench/section-rail";
 import { LiveRefresh } from "@/components/shared/live-refresh";
 
 export const dynamic = "force-dynamic";
+
+// The operator's words for the class, with the raw machine value as the
+// fallback — never a guessed label.
+function classLabel(value: string) {
+  return CLASS_LABELS[value] ?? value.replaceAll("_", " ");
+}
 
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  return { title: `Incident ${(await params).id}` };
+  const { id } = await params;
+  const { tenantId } = requestContext(await headers());
+  const incident = await getIncidentDto(tenantId, id);
+  // Called here — before the streaming shell flushes — so an unknown id
+  // answers with a real 404 instead of a 200 that streams the not-found UI.
+  if (!incident) notFound();
+  // The tab title leads with the class label — the operator works several
+  // exceptions at once — and keeps the id secondary, as everywhere else.
+  return { title: `Exception ${classLabel(incident.incident_class)} · ${id}` };
 }
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -92,42 +109,70 @@ export default async function IncidentPage({
   const canApprove =
     incident.reconciliation.resolution === "reconcile_internal_state" &&
     incident.status === "pending";
-  const verified =
-    incident.status === "reconciled" &&
-    incident.reconciliation.invariant_results.status;
+  // The verification card answers one question: did this record leave the
+  // loop proven? The verify step's recorded outcome is the durable answer.
+  // The bundle's own invariants describe the state BEFORE any repair, so
+  // they must not answer it — a repaired record still shows its pre-repair
+  // mismatch in evidence.
+  const verifyRow = incident.progress.find(
+    (row) => row.step === "verify" && row.status === "completed",
+  );
+  const verifyDetails =
+    verifyRow && typeof verifyRow.details === "object" && verifyRow.details
+      ? (verifyRow.details as { post_repair_state_status?: unknown })
+          .post_repair_state_status
+      : undefined;
+  const verification =
+    incident.status === "escalated"
+      ? ("escalated" as const)
+      : verifyDetails === "verified"
+        ? ("verified" as const)
+        : incident.status === "reconciled"
+          ? ("closed" as const)
+          : ("open" as const);
+  // The escalate dialog promises the stopping reason will be readable; show it
+  // where the next reader lands — on the exception itself.
+  const escalateRow = incident.progress.find(
+    (row) => row.step === "escalate" && row.status === "completed",
+  );
+  const escalateDetail =
+    escalateRow &&
+    typeof escalateRow.details === "object" &&
+    escalateRow.details
+      ? (escalateRow.details as { reason?: unknown }).reason
+      : undefined;
+  const stoppingReason =
+    incident.status === "escalated" &&
+    typeof escalateDetail === "string" &&
+    escalateDetail !== "operator action" &&
+    escalateDetail !== "operator escalation"
+      ? escalateDetail
+      : null;
   return (
-    <main
-      id="main-content"
-      className="workspace-rail relative reserve-section-rail py-10 sm:py-14"
-    >
-      <SectionRail />
-      <div
-        id="workbench-overview"
-        className="scroll-mt-24 border-b border-border pb-8 sm:flex sm:items-end sm:justify-between sm:gap-8"
-      >
+    <main id="main-content" className="workspace-rail py-10 sm:py-14">
+      <div className="border-b border-border pb-8 sm:flex sm:items-end sm:justify-between sm:gap-8">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link
               href={backHref}
-              className="focus-ring inline-flex items-center gap-1.5 rounded text-xs text-muted-foreground hover:text-foreground"
+              className="focus-ring inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:px-1.5"
             >
               <ArrowLeft aria-hidden="true" className="size-3.5" />
               Exceptions
             </Link>
             <IncidentPager previousHref={previousHref} nextHref={nextHref} />
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+              {classLabel(incident.incident_class)}
+            </h1>
             <StatusBadge status={incident.status} />
-            <SourceBadge source={incident.source_kind} />
           </div>
-          <h1 className="mt-3 font-display text-4xl font-medium leading-none capitalize sm:text-5xl">
-            {incident.incident_class.replaceAll("_", " ")}
-          </h1>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span className="font-data [overflow-wrap:anywhere]">
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span translate="no" className="font-data [overflow-wrap:anywhere]">
               {incident.incident_id}
             </span>
-            <span className="font-data [overflow-wrap:anywhere]">
+            <span translate="no" className="font-data [overflow-wrap:anywhere]">
               {incident.payment_id}
             </span>
             <span className="font-data">
@@ -137,95 +182,61 @@ export default async function IncidentPage({
               )}
             </span>
             <span>Updated {formatDate(incident.updated_at)}</span>
+            <SourceBadge source={incident.source_kind} />
           </div>
+          {stoppingReason ? (
+            <p className="mt-2 max-w-xl text-xs leading-5 text-muted-foreground">
+              <span className="font-medium text-foreground">
+                Stopping reason
+              </span>
+              <span aria-hidden="true" className="mx-1.5 text-ink-tertiary">
+                ·
+              </span>
+              {stoppingReason}
+            </p>
+          ) : null}
         </div>
-        <div className="mt-6 flex shrink-0 justify-start sm:mt-0 sm:justify-end">
+        <div className="mt-6 flex shrink-0 flex-wrap items-center justify-start gap-2 sm:mt-0 sm:justify-end">
+          <LiveRefresh
+            endpoint={`/api/incidents/${incident.incident_id}`}
+            label="Exception"
+            stopOnNotFound
+          />
           <IncidentActions
             incidentId={incident.incident_id}
             canApprove={canApprove}
+            canEscalate={!terminal}
             targetOrderId={incident.reconciliation.target_order_id}
             targetState={incident.reconciliation.target_state}
             idempotencyKey={incident.idempotency_key}
           />
         </div>
       </div>
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <LoopRail
-            currentStep={incident.current_step}
-            currentStatus={incident.current_step_status}
-            terminal={terminal}
-          />
-        </div>
-        <LiveRefresh
-          endpoint={`/api/incidents/${incident.incident_id}`}
-          label="Exception"
+      {/* The rail runs the full content width as one band; the pause control
+          lives with the actions in the header, per the console's page-header
+          pattern. */}
+      <div className="mt-8">
+        <LoopRail
+          currentStep={incident.current_step}
+          currentStatus={incident.current_step_status}
+          progress={incident.progress}
         />
       </div>
       <WorkbenchSections
         evidence={<EvidenceTimeline evidence={incident.evidence} />}
         judgment={<JudgmentPanel incident={incident} />}
         control={
-          <div className="space-y-8">
-            <div className="grid gap-8">
-              <PolicyDecision
-                reconciliation={incident.reconciliation}
-                idempotencyKey={incident.idempotency_key}
-              />
-              <PostRepairStateComparison
-                reconciliation={incident.reconciliation}
-                verified={verified}
-              />
-            </div>
-            <section
-              id="workbench-closure"
-              className="scroll-mt-24 border-t border-border pt-6"
-            >
-              <p className="font-data text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-                Closure checks
-              </p>
-              <div className="mt-1 flex items-center justify-between gap-4">
-                <h2 className="text-lg font-semibold">Closure</h2>
-                {incident.status === "reconciled" ? (
-                  <CloseStamp label="Closed" />
-                ) : incident.status === "escalated" ? (
-                  <CloseStamp label="Escalated" tone="ink" />
-                ) : null}
-              </div>
-              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                {incident.status === "reconciled"
-                  ? "Merchant state was reconciled and the required checks passed."
-                  : incident.status === "escalated"
-                    ? "This exception was escalated with its evidence bundle and stopping reason."
-                    : "Keep this exception open until the approved action completes and a fresh check confirms both systems agree."}
-              </p>
-              <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-                <div>
-                  <dt className="text-xs text-muted-foreground">
-                    Provider observation
-                  </dt>
-                  <dd className="mt-1 font-data text-xs">
-                    {incident.reconciliation.provider_state}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">
-                    Merchant observation
-                  </dt>
-                  <dd className="mt-1 font-data text-xs">
-                    {incident.reconciliation.merchant_state}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">
-                    Order mapping
-                  </dt>
-                  <dd className="mt-1 font-data text-xs">
-                    {incident.order_id ?? "Not unique"}
-                  </dd>
-                </div>
-              </dl>
-            </section>
+          <div className="grid gap-8">
+            <PolicyDecision
+              reconciliation={incident.reconciliation}
+              idempotencyKey={incident.idempotency_key}
+            />
+            <PostRepairStateComparison
+              evidence={incident.evidence}
+              reconciliation={incident.reconciliation}
+              payment={incident.payment}
+              verification={verification}
+            />
           </div>
         }
       />

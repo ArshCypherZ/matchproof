@@ -1,15 +1,43 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
+
+type OutcomeTone = "success" | "provider" | "muted" | "warning";
 
 type OutcomeItem = {
   label: string;
   value: number;
-  className: string;
+  tone: OutcomeTone;
 };
 
-export function OutcomeDistribution({ items }: { items: OutcomeItem[] }) {
+// Built once: benchmark counts can cross a grouping threshold and the list
+// formats one number per row.
+const countFormat = new Intl.NumberFormat("en-IN");
+
+/* One vocabulary: each outcome maps to a shared semantic token here, so the
+   page names a meaning, never a color. The bar is a decorative proportion
+   (aria-hidden); the definition list beside it is the readable record. */
+const segmentClass: Record<OutcomeTone, string> = {
+  success: "bg-success",
+  provider: "bg-provider",
+  muted: "bg-ink-tertiary",
+  warning: "bg-warning",
+};
+
+export function OutcomeDistribution({
+  items,
+  className,
+}: {
+  items: OutcomeItem[];
+  className?: string;
+}) {
   const barRef = useRef<HTMLDivElement>(null);
+  /* The one authored focal moment of the page: each segment grows in from
+     the left, once per mount. The SSR markup already paints the bar full
+     size, so nothing is gated behind the motion, and reduced-motion skips
+     it entirely. The effect's [] deps mean a LiveRefresh re-render never
+     replays it — only a real navigation remounts the bar. */
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (query.matches) return;
@@ -24,10 +52,10 @@ export function OutcomeDistribution({ items }: { items: OutcomeItem[] }) {
           { opacity: 1, transform: "scaleX(1)" },
         ],
         {
-          duration: 500,
+          duration: 420,
           delay: index * 70,
-          // Literal form of --ease-out-expo; WAAPI takes no var() here.
-          easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+          // Literal form of --motion-ease-emphasized; WAAPI cannot read CSS vars.
+          easing: "cubic-bezier(0.16, 1, 0.3, 1)",
           fill: "backwards",
         },
       ),
@@ -36,19 +64,18 @@ export function OutcomeDistribution({ items }: { items: OutcomeItem[] }) {
   }, []);
 
   return (
-    <section aria-labelledby="outcome-heading">
-      <div className="flex items-baseline gap-3">
-        <span className="font-data text-2xs text-muted-foreground">04</span>
-        <h3 id="outcome-heading" className="text-base font-semibold">
-          Outcome distribution
-        </h3>
-      </div>
+    <section
+      aria-labelledby="outcome-heading"
+      className={cn("mt-10", className)}
+    >
+      <h3 id="outcome-heading" className="text-base font-semibold">
+        Outcome distribution
+      </h3>
       <p className="mt-1 text-xs text-muted-foreground">
         One benchmark case can appear in more than one outcome category.
       </p>
       <div
-        ref={barRef}
-        className="mt-5 flex h-4 overflow-hidden rounded-sm bg-surface-subtle"
+        className="mt-5 flex h-4 overflow-hidden rounded-md bg-surface-subtle"
         aria-hidden="true"
       >
         {items
@@ -57,27 +84,31 @@ export function OutcomeDistribution({ items }: { items: OutcomeItem[] }) {
             <span
               key={item.label}
               data-outcome-segment
-              className={`${item.className} origin-left`}
+              className={`${segmentClass[item.tone]} origin-left`}
               style={{ flexGrow: item.value }}
             />
           ))}
       </div>
-      <div className="mt-2 grid grid-cols-12 gap-1" aria-hidden="true">
-        {Array.from({ length: 12 }, (_, index) => (
-          <span
-            key={index}
-            className={`h-1 border-l border-border ${index % 3 === 0 ? "border-l-foreground" : ""}`}
-          />
-        ))}
-      </div>
-      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
+      {/* Column ladder matches the KPI grids above: one per row on small
+          screens (the labels keep their value on one line), two from sm,
+          and four at lg so the hairline rows stop stretching across the
+          full workspace rail. */}
+      <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((item) => (
           <div
             key={item.label}
             className="flex items-baseline justify-between gap-4 border-b border-border pb-2"
           >
-            <dt className="text-sm text-muted-foreground">{item.label}</dt>
-            <dd className="font-data text-sm font-medium">{item.value}</dd>
+            <dt className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className={`size-2 shrink-0 rounded-full ${segmentClass[item.tone]}`}
+              />
+              {item.label}
+            </dt>
+            <dd className="font-data text-sm font-medium tabular-nums">
+              {countFormat.format(item.value)}
+            </dd>
           </div>
         ))}
       </dl>

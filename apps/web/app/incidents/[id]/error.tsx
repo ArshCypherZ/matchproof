@@ -20,9 +20,9 @@ export default function Error({
       className="workspace-rail py-10 sm:py-14"
     >
       <InlineNotice
-        title="Exception workbench unavailable"
-        body="The latest exception read failed. No action was performed."
-        actionLabel="Retry workbench"
+        title="Exception unavailable"
+        body="This exception could not be loaded. Nothing was changed."
+        actionLabel="Try again"
         onAction={retry}
       />
     </main>

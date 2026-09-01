@@ -10,7 +10,12 @@ export async function generateMetadata({
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  return { title: `Batch ${(await params).id}` };
+  const { id } = await params;
+  const { tenantId } = requestContext(await headers());
+  // Called here — before the streaming shell flushes — so an unknown batch
+  // answers with a real 404 instead of a 200 that streams the not-found UI.
+  if (!(await getBatchDto(tenantId, id))) notFound();
+  return { title: `Batch ${id}` };
 }
 
 export const dynamic = "force-dynamic";

@@ -23,7 +23,7 @@ export function Logo({ className }: { className?: string }) {
       />
       {/* …and the controller's tick that proves it. The one red node. */}
       <path
-        className="stroke-signature"
+        className="stroke-brand-red"
         d="M296 252 L352 328 L444 190"
         strokeWidth="68"
         strokeLinecap="round"

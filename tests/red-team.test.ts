@@ -110,7 +110,10 @@ class MemoryRecoveryRepository {
     return this.attempts.get(key);
   }
   async startRecoveryAttempt(input: RecoveryAttempt) {
-    if (this.attempts.has(input.execution_key)) return false;
+    const existing = this.attempts.get(input.execution_key);
+    if (existing && existing.status !== "failed") return false;
+    // Mirrors the durable repositories: only a failed attempt is re-claimable,
+    // so an in-progress or succeeded execution stays owned by its caller.
     this.attempts.set(input.execution_key, input);
     return true;
   }
@@ -470,11 +473,15 @@ describe("T-019 red-team controls", () => {
     await store.close();
   });
 
-  it("does not re-execute an action after a timeout is durably marked failed", async () => {
+  it("retries a durably failed action only under the same idempotency key", async () => {
     const repository = new MemoryRecoveryRepository();
-    const updateOrderState = vi.fn(async () => {
-      throw new Error("merchant write timed out");
-    });
+    const idempotencyKeys: string[] = [];
+    const updateOrderState = vi.fn(
+      async (_orderId: string, _newState: string, idempotencyKey: string) => {
+        idempotencyKeys.push(idempotencyKey);
+        throw new Error("merchant write timed out");
+      },
+    );
     const executor = new RecoveryExecutor(
       repository,
       merchantAdapter(updateOrderState),
@@ -485,7 +492,11 @@ describe("T-019 red-team controls", () => {
     await expect(
       executor.execute(recoveryDecision, recoveryContext),
     ).rejects.toThrow("merchant write timed out");
-    expect(updateOrderState).toHaveBeenCalledOnce();
+    // The retry is allowed, but it re-executes under the same idempotency key:
+    // a timed-out write that actually landed is answered "already applied" by
+    // the merchant platform, so no merchant state is ever changed twice.
+    expect(idempotencyKeys).toHaveLength(2);
+    expect(new Set(idempotencyKeys).size).toBe(1);
     const attempt = [...repository.attempts.values()][0];
     expect(attempt).toMatchObject({
       status: "failed",

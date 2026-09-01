@@ -36,7 +36,10 @@ class MemoryRecoveryRepository {
     return this.attempts.get(key);
   }
   async startRecoveryAttempt(input: RecoveryAttempt) {
-    if (this.attempts.has(input.execution_key)) return false;
+    const existing = this.attempts.get(input.execution_key);
+    if (existing && existing.status !== "failed") return false;
+    // Mirrors the durable repositories: only a failed attempt is re-claimable,
+    // so an in-progress or succeeded execution stays owned by its caller.
     this.attempts.set(input.execution_key, input);
     return true;
   }
@@ -119,7 +122,7 @@ describe("RecoveryExecutor", () => {
     });
   });
 
-  it("records adapter failure and returns the durable failure on restart", async () => {
+  it("records adapter failure and retries the same idempotent execution afterwards", async () => {
     const repository = new MemoryRecoveryRepository();
     const adapter = merchant();
     vi.mocked(adapter.updateOrderState).mockRejectedValueOnce(
@@ -128,11 +131,23 @@ describe("RecoveryExecutor", () => {
     const executor = new RecoveryExecutor(repository, adapter);
 
     await expect(executor.execute(allowed, context)).rejects.toThrow("timeout");
-    await expect(executor.execute(allowed, context)).rejects.toThrow("timeout");
-    expect(adapter.updateOrderState).toHaveBeenCalledTimes(1);
     expect([...repository.attempts.values()][0]).toMatchObject({
       status: "failed",
       error: "timeout",
+    });
+
+    // A failed attempt is a recorded fact, not a terminal state: the next
+    // execution re-claims it under the same idempotency key, so the merchant
+    // acknowledgement still guards against a double write.
+    const retried = await executor.execute(allowed, context);
+    expect(retried.status).toBe("reconciled");
+    expect(adapter.updateOrderState).toHaveBeenCalledTimes(2);
+    const keys = vi
+      .mocked(adapter.updateOrderState)
+      .mock.calls.map((call) => call[2]);
+    expect(new Set(keys).size).toBe(1);
+    expect(repository.attempts.get(retried.idempotency_key)).toMatchObject({
+      status: "succeeded",
     });
   });
 

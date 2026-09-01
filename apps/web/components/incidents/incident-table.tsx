@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { facetQuery } from "./queue-facets";
+import { CLASS_LABELS, facetQuery } from "./queue-facets";
 import { focusQueueSearch, shortcutsInert } from "./queue-shortcuts";
 import { StartBatchButton } from "@/components/batches/start-batch-button";
 import { SourceBadge } from "@/components/shared/source-badge";
@@ -31,9 +31,10 @@ export type IncidentItem = {
 };
 
 function classLabel(value: string) {
-  return value
-    .replaceAll("_", " ")
-    .replace(/^./, (letter) => letter.toUpperCase());
+  return (
+    CLASS_LABELS[value] ??
+    value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase())
+  );
 }
 
 // Step statuses arrive from the pipeline as "completed", "running:3",
@@ -43,17 +44,23 @@ function stepStatusLabel(value: string) {
   const [word, iteration] = value.split(":");
   const noun =
     {
-      completed: "done",
+      completed: "complete",
       running: "running",
       retrying: "retrying",
       failed: "failed",
       blocked: "blocked",
       pending: "waiting",
     }[word] ?? word.replaceAll("_", " ");
-  return iteration ? `${noun} · try ${iteration}` : noun;
+  return iteration ? `${noun} · attempt ${iteration}` : noun;
 }
 
-export function IncidentQueue({ items }: { items: IncidentItem[] }) {
+export function IncidentQueue({
+  items,
+  showSource = false,
+}: {
+  items: IncidentItem[];
+  showSource?: boolean;
+}) {
   const params = useSearchParams();
   const [selected, setSelected] = useState<string[]>([]);
   const [selectionAnnouncement, setSelectionAnnouncement] = useState("");
@@ -141,7 +148,34 @@ export function IncidentQueue({ items }: { items: IncidentItem[] }) {
         ? current.filter((item) => item !== incidentId)
         : [...current, incidentId],
     );
-  const allSelected = items.length > 0 && selected.length === items.length;
+  // Selection is global (it survives a live refresh that swaps the page's
+  // rows), so the header checkbox must judge the on-page rows only — a
+  // stale off-page id must not light the box as fully checked.
+  const onPageSelectedCount = items.reduce(
+    (count, item) => count + (selected.includes(item.incident_id) ? 1 : 0),
+    0,
+  );
+  const allSelected = items.length > 0 && onPageSelectedCount === items.length;
+  const someSelected =
+    onPageSelectedCount > 0 && onPageSelectedCount < items.length;
+  // The fixed capsule animates out (not just unmounts) when a selection
+  // clears: dismissal is a state change the motion system explains. The
+  // fade is faster than the entrance, per the motion law. The transition
+  // is detected during render (the same pattern the search field sync
+  // uses) so no effect sets state synchronously; the effect only times
+  // the exit.
+  const [closing, setClosing] = useState(false);
+  const [previousCount, setPreviousCount] = useState(selected.length);
+  if (previousCount !== selected.length) {
+    setPreviousCount(selected.length);
+    setClosing(previousCount > 0 && selected.length === 0);
+  }
+  useEffect(() => {
+    if (!closing) return;
+    const timer = setTimeout(() => setClosing(false), 160);
+    return () => clearTimeout(timer);
+  }, [closing]);
+  const capsuleOpen = selected.length > 0 || closing;
   // An empty queue means one of two things: filters hid everything
   // (recoverable) or the queue is genuinely clear (nothing to do).
   const filtersActive = [...params.keys()].some(
@@ -150,10 +184,10 @@ export function IncidentQueue({ items }: { items: IncidentItem[] }) {
   return (
     <>
       {!items.length ? (
-        <div className="px-5 py-16 text-center text-sm text-muted-foreground">
+        <div className="bg-surface-subtle px-5 py-16 text-center text-sm text-muted-foreground">
           {filtersActive
             ? "No exceptions match these filters. Clear them to see the full queue."
-            : "The queue is clear. Every exception is verified or escalated."}
+            : "The queue is clear. Nothing needs attention right now."}
         </div>
       ) : (
         <>
@@ -167,6 +201,9 @@ export function IncidentQueue({ items }: { items: IncidentItem[] }) {
               )
             }
             facetSearch={facetSearch}
+            showSource={showSource}
+            allSelected={allSelected}
+            indeterminate={someSelected}
             registerRowLink={(incidentId) => (node) => {
               if (node) rowLinks.current.set(incidentId, node);
               else rowLinks.current.delete(incidentId);
@@ -177,17 +214,20 @@ export function IncidentQueue({ items }: { items: IncidentItem[] }) {
             selected={selected}
             onToggle={toggle}
             facetSearch={facetSearch}
+            showSource={showSource}
           />
         </>
       )}
       <span className="sr-only" aria-live="polite">
         {selectionAnnouncement}
       </span>
-      {selected.length ? (
+      {capsuleOpen ? (
         <div
           role="region"
           aria-label="Batch selection actions"
-          className="animate-capsule-pop fixed inset-x-4 bottom-4 z-40 mx-auto flex w-[min(calc(100%-2rem),34rem)] items-center justify-between gap-3 rounded-full border border-border bg-surface-raised px-3 py-2 motion-reduce:animate-none [margin-bottom:max(1rem,env(safe-area-inset-bottom))]"
+          className={`fixed inset-x-4 bottom-4 z-40 mx-auto flex w-[min(calc(100%-2rem),34rem)] items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2 shadow-lg motion-reduce:animate-none [margin-bottom:max(1rem,env(safe-area-inset-bottom))] ${
+            closing ? "animate-capsule-fade" : "animate-capsule-pop"
+          }`}
         >
           <span className="whitespace-nowrap pl-2 font-data text-xs">
             {selected.length} selected
@@ -198,8 +238,8 @@ export function IncidentQueue({ items }: { items: IncidentItem[] }) {
               variant="ghost"
               size="icon-sm"
               onClick={() => setSelected([])}
-              aria-label="Clear selected incidents"
-              title="Clear selected incidents"
+              aria-label="Clear selected exceptions"
+              title="Clear selected exceptions"
             >
               <X aria-hidden="true" />
             </Button>
@@ -208,7 +248,7 @@ export function IncidentQueue({ items }: { items: IncidentItem[] }) {
       ) : null}
       {/* The selection capsule is fixed to the viewport bottom; hold
           space for it so it never covers the pagination row. */}
-      {selected.length ? <div aria-hidden="true" className="h-24" /> : null}
+      {capsuleOpen ? <div aria-hidden="true" className="h-24" /> : null}
     </>
   );
 }
@@ -219,6 +259,9 @@ function IncidentTable({
   onToggle,
   onToggleAll,
   facetSearch,
+  showSource,
+  allSelected,
+  indeterminate,
   registerRowLink,
 }: {
   items: IncidentItem[];
@@ -226,6 +269,9 @@ function IncidentTable({
   onToggle: (incidentId: string) => void;
   onToggleAll: () => void;
   facetSearch: string;
+  showSource: boolean;
+  allSelected: boolean;
+  indeterminate: boolean;
   registerRowLink: (
     incidentId: string,
   ) => (node: HTMLAnchorElement | null) => void;
@@ -240,12 +286,14 @@ function IncidentTable({
               <label className="check-hit">
                 <input
                   type="checkbox"
-                  aria-label="Select all exceptions on this page"
-                  checked={items.length > 0 && selected.length === items.length}
+                  aria-label={
+                    allSelected
+                      ? "Deselect all exceptions on this page"
+                      : "Select all exceptions on this page"
+                  }
+                  checked={allSelected}
                   ref={(node) => {
-                    if (node)
-                      node.indeterminate =
-                        selected.length > 0 && selected.length < items.length;
+                    if (node) node.indeterminate = indeterminate;
                   }}
                   onChange={onToggleAll}
                   className="check-target"
@@ -270,22 +318,19 @@ function IncidentTable({
             <th scope="col" className="px-3 py-3 font-medium">
               Current step
             </th>
-            <th scope="col" className="px-3 py-3 font-medium">
-              Source
-            </th>
+            {showSource ? (
+              <th scope="col" className="px-3 py-3 font-medium">
+                Source
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
-          {items.map((item, index) => (
+          {items.map((item) => (
             <tr
               key={item.incident_id}
               data-incident-id={item.incident_id}
-              style={
-                {
-                  animationDelay: `${Math.min(index, 10) * 40}ms`,
-                } as CSSProperties
-              }
-              className="animate-enter-rise relative border-b border-border transition-colors before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary before:opacity-0 last:border-0 hover:bg-surface-subtle hover:before:opacity-100 motion-reduce:animate-none"
+              className="group/row border-b border-border transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] last:border-0 hover:bg-surface-subtle"
             >
               <td className="px-5 py-3">
                 <label className="check-hit">
@@ -308,7 +353,7 @@ function IncidentTable({
                   className="focus-ring block rounded-md"
                 >
                   <span
-                    className="block truncate font-medium"
+                    className="block truncate font-medium group-hover/row:underline group-hover/row:underline-offset-4"
                     title={classLabel(item.incident_class)}
                   >
                     {classLabel(item.incident_class)}
@@ -325,9 +370,9 @@ function IncidentTable({
                 <CopyId value={item.payment_id} />
                 <span
                   className="mt-1 block truncate font-data text-xs text-muted-foreground"
-                  title={item.order_id ?? "Order not uniquely mapped"}
+                  title={item.order_id ?? "No order linked"}
                 >
-                  {item.order_id ?? "Order not uniquely mapped"}
+                  {item.order_id ?? "No order linked"}
                 </span>
               </td>
               <td className="px-3 py-3 text-right font-data text-xs">
@@ -347,9 +392,11 @@ function IncidentTable({
                   {stepStatusLabel(item.current_step_status)}
                 </span>
               </td>
-              <td className="px-3 py-3">
-                <SourceBadge source={item.source_kind} />
-              </td>
+              {showSource ? (
+                <td className="px-3 py-3">
+                  <SourceBadge source={item.source_kind} />
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>
@@ -363,23 +410,20 @@ function IncidentMobileList({
   selected,
   onToggle,
   facetSearch,
+  showSource,
 }: {
   items: IncidentItem[];
   selected: string[];
   onToggle: (incidentId: string) => void;
   facetSearch: string;
+  showSource: boolean;
 }) {
   return (
     <div className="divide-y divide-border md:hidden">
-      {items.map((item, index) => (
+      {items.map((item) => (
         <article
           key={item.incident_id}
-          style={
-            {
-              animationDelay: `${Math.min(index, 10) * 40}ms`,
-            } as CSSProperties
-          }
-          className="animate-enter-rise px-4 py-4 hover:bg-surface-subtle motion-reduce:animate-none"
+          className="px-4 py-4 transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] hover:bg-surface-subtle"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -400,9 +444,11 @@ function IncidentMobileList({
           </div>
           <Link
             href={`/incidents/${item.incident_id}${facetSearch}`}
-            className="focus-ring mt-3 block rounded"
+            className="focus-ring mt-3 block rounded-md pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center"
           >
-            <p className="font-medium">{classLabel(item.incident_class)}</p>
+            <p className="text-sm font-medium">
+              {classLabel(item.incident_class)}
+            </p>
           </Link>
           <p className="mt-1 font-data text-xs text-muted-foreground [overflow-wrap:anywhere]">
             {item.incident_id}
@@ -414,20 +460,22 @@ function IncidentMobileList({
             </span>
           </div>
           <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>
-              Stage:{" "}
-              <span className="font-medium text-foreground">
-                {stepLabel(item.current_step)}
-              </span>
+            <span className="font-medium text-foreground">
+              {stepLabel(item.current_step)}
             </span>
             <Link
               href={`/incidents/${item.incident_id}${facetSearch}`}
               aria-label={`Open ${item.incident_id}`}
-              className="focus-ring inline-flex items-center gap-1 rounded-sm text-foreground underline-offset-4 hover:underline"
+              className="focus-ring inline-flex items-center gap-1 rounded-md text-foreground underline-offset-4 hover:underline pointer-coarse:min-h-11 pointer-coarse:px-1"
             >
               Open <ChevronRight aria-hidden="true" className="size-3.5" />
             </Link>
           </div>
+          {showSource ? (
+            <div className="mt-3">
+              <SourceBadge source={item.source_kind} />
+            </div>
+          ) : null}
         </article>
       ))}
     </div>

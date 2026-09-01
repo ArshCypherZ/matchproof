@@ -21,7 +21,7 @@ export function PageSkeleton({
         <Skeleton className="h-8 w-52" />
         <Skeleton className="h-5 w-full max-w-xl" />
       </div>
-      <div className="mt-6 overflow-hidden rounded-lg border border-border bg-surface">
+      <div className="mt-6 overflow-hidden rounded-xl bg-surface">
         <Skeleton className="h-16 rounded-none border-b border-border" />
         {Array.from({ length: rows }, (_, index) => (
           <Skeleton

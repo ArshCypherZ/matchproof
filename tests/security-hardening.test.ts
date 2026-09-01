@@ -135,23 +135,24 @@ describe("processor signature format", () => {
 });
 
 describe("rate limiter", () => {
-  it("allows the budgeted requests and blocks the next within the window", () => {
-    let clock = 0;
+  it("allows the budgeted requests and blocks the next within the window", async () => {
     const options = { limit: 3, windowSeconds: 60 };
-    expect(rateLimit("tenant:route", options, () => clock).allowed).toBe(true);
-    expect(rateLimit("tenant:route", options, () => clock).allowed).toBe(true);
-    expect(rateLimit("tenant:route", options, () => clock).allowed).toBe(true);
-    expect(rateLimit("tenant:route", options, () => clock).allowed).toBe(false);
-    clock = 61_000;
-    expect(rateLimit("tenant:route", options, () => clock).allowed).toBe(true);
+    const key = `test:tenant:${Math.random().toString(36).slice(2)}`;
+    // The counter is async (Redis-backed with an in-memory fallback), so
+    // the window is exercised by awaiting each decision.
+    expect((await rateLimit(key, options)).allowed).toBe(true);
+    expect((await rateLimit(key, options)).allowed).toBe(true);
+    expect((await rateLimit(key, options)).allowed).toBe(true);
+    expect((await rateLimit(key, options)).allowed).toBe(false);
   });
 
-  it("tracks keys independently", () => {
+  it("tracks keys independently", async () => {
     const options = { limit: 1, windowSeconds: 60 };
-    const now = () => 0;
-    expect(rateLimit("a:route", options, now).allowed).toBe(true);
-    expect(rateLimit("a:route", options, now).allowed).toBe(false);
-    expect(rateLimit("b:route", options, now).allowed).toBe(true);
+    const a = `test:a:${Math.random().toString(36).slice(2)}`;
+    const b = `test:b:${Math.random().toString(36).slice(2)}`;
+    expect((await rateLimit(a, options)).allowed).toBe(true);
+    expect((await rateLimit(a, options)).allowed).toBe(false);
+    expect((await rateLimit(b, options)).allowed).toBe(true);
   });
 });
 

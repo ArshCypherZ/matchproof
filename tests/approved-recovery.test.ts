@@ -8,6 +8,7 @@ import { merchantOrders } from "../src/db/sqlite-schema";
 import { SqliteMerchantPlatformAdapter } from "../src/db/sqlite-merchant-platform-adapter";
 import { IncidentStore, verifyBundle } from "../src/incident_commander/core";
 import { executeApprovedRecovery } from "../src/incident_commander/approved-recovery";
+import { recoveryExecutionKey } from "../src/incident_commander/recovery-executor";
 import type { ProviderPostRepairStateAdapter } from "../src/incident_commander/post-repair-state-verifier";
 
 const secret = "test-prototype-secret";
@@ -142,6 +143,82 @@ describe("approved recovery", () => {
     expect(
       await merchant.fetchOrderState("order_paid_pending_001"),
     ).toMatchObject({ state: "paid" });
+    await store.close();
+  });
+
+  it("records a failed repair attempt durably and retries it on the next approval", async () => {
+    const statePath = path.join(root, "failed-attempt.sqlite3");
+    const store = new IncidentStore(statePath, true, secret, "tenant-approve");
+    await store.initialize();
+    await store.ingest(paidPendingBundle());
+    const merchantFile = path.join(root, "merchant-failed.sqlite3");
+    const connection = createSqliteDatabase(merchantFile);
+    migrate(connection.db, { migrationsFolder: "drizzle-sqlite" });
+    const merchant = new SqliteMerchantPlatformAdapter(connection.db);
+    const options = {
+      store,
+      incidentId: "inc_paid_pending_001",
+      tenantId: "tenant-approve",
+      actor: "operator-test",
+      merchant,
+      provider: capturedPaymentProvider,
+    };
+    // The merchant order does not exist yet, so the first approval's repair
+    // fails and the attempt is recorded durably.
+    await expect(executeApprovedRecovery(options)).rejects.toThrow(
+      /merchant order order_paid_pending_001 was not found/,
+    );
+    const executionKey = recoveryExecutionKey(
+      {
+        action: "reconcile_internal_state",
+        allowed: true,
+        reason: "operator approval",
+        approval_required: null,
+      },
+      {
+        tenantId: "tenant-approve",
+        incidentId: "inc_paid_pending_001",
+        paymentId: "pay_paid_pending_001",
+        orderId: "order_paid_pending_001",
+        beforeState: "captured",
+        targetState: "paid",
+      },
+    );
+    const attempt = await store.recoveryAttempt(executionKey);
+    expect(attempt?.status).toBe("failed");
+    expect(attempt?.error).toContain("was not found");
+    const progress = await store.progress("inc_paid_pending_001");
+    expect(progress).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ step: "execute", status: "failed" }),
+      ]),
+    );
+
+    // The merchant order now exists: a repeated approval retries the repair
+    // instead of replaying the failed attempt.
+    connection.db
+      .insert(merchantOrders)
+      .values({
+        orderId: "order_paid_pending_001",
+        paymentId: "pay_paid_pending_001",
+        state: "pending",
+        amountMinor: 1000,
+        currency: "INR",
+        createdAt: "2026-08-21T10:00:03.000Z",
+        updatedAt: "2026-08-21T10:00:03.000Z",
+      })
+      .run();
+    const retried = await executeApprovedRecovery(options);
+    expect(retried.status).toBe("executed");
+    if (retried.status !== "executed") throw new Error("retry did not execute");
+    expect(retried.outcome.status).toBe("reconciled");
+    expect(retried.post_repair_state.status).toBe("verified");
+    expect(
+      await merchant.fetchOrderState("order_paid_pending_001"),
+    ).toMatchObject({ state: "paid" });
+    const retriedAttempt = await store.recoveryAttempt(executionKey);
+    expect(retriedAttempt?.status).toBe("succeeded");
+    connection.client.close();
     await store.close();
   });
 

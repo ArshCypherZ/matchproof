@@ -9,6 +9,11 @@ const nextConfig: NextConfig = {
   logging: {
     browserToTerminal: true,
   },
+  async redirects() {
+    // Served before routing so "/" answers 307 with a Location header —
+    // a redirect() in the page itself streams after the 200 shell.
+    return [{ source: "/", destination: "/incidents", permanent: false }];
+  },
   async rewrites() {
     return [{ source: "/health", destination: "/api/health" }];
   },

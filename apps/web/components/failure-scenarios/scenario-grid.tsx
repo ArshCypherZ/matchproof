@@ -1,7 +1,4 @@
-"use client";
-
-import { motion, useReducedMotion } from "motion/react";
-import { stepLabel } from "@/components/shared/step-labels";
+import { STEP_LABELS, stepLabel } from "@/components/shared/step-labels";
 
 type Scenario = {
   id: string;
@@ -11,44 +8,27 @@ type Scenario = {
   outcome: string;
 };
 
-const cardColors = [
-  "var(--scenario-1)",
-  "var(--scenario-2)",
-  "var(--scenario-3)",
-  "var(--scenario-4)",
-  "var(--scenario-5)",
-] as const;
+// The step vocabulary in step-labels.ts reads in loop order, so its key order
+// is the pipeline order. Groups read in it: failures at the same step sit
+// together, in the order the controller's loop actually reaches them. An
+// unknown step id sorts last rather than guessing a position.
+const LOOP_ORDER = Object.keys(STEP_LABELS);
 
-const titleLabels: Record<string, string> = {
-  mcp_denial: "Evidence connector denied",
-  contradictory_post_repair_state: "Conflicting verification result",
-};
+function loopRank(step: string) {
+  const index = LOOP_ORDER.indexOf(step);
+  return index === -1 ? LOOP_ORDER.length : index;
+}
 
-// Eyebrows show the scenario id as a machine label; this one carries a word
-// the copy keeps out of the interface, so it reads like its title.
-const eyebrowLabels: Record<string, string> = {
-  contradictory_post_repair_state: "conflicting verification",
-};
-
-const responseLabels: Record<string, string> = {
-  retry_safe_read: "Retry the provider read",
-  wait: "Wait and retry",
-  switch_evidence_source: "Use another evidence source",
-  stop: "Stop the current action",
-  verify_state: "Verify the current state",
-  escalate: "Escalate for review",
-};
-
-function outcomeLabel(scenario: Scenario) {
-  if (scenario.id === "provider_timeout")
-    return "Retry the read within the retry window, then escalate.";
-  if (scenario.id === "reordered_webhook")
-    return "Reconstruct the evidence by event time before classification.";
-  if (scenario.id === "merchant_ack_loss")
-    return "Pause execution and verify the current state without a second update.";
-  if (scenario.id === "model_failure")
-    return "Use the built-in diagnosis and record the model failure.";
-  return scenario.outcome;
+function groupsByStep(scenarios: readonly Scenario[]) {
+  const groups = new Map<string, Scenario[]>();
+  for (const scenario of [...scenarios].sort(
+    (a, b) => loopRank(a.step) - loopRank(b.step),
+  )) {
+    const bucket = groups.get(scenario.step);
+    if (bucket) bucket.push(scenario);
+    else groups.set(scenario.step, [scenario]);
+  }
+  return [...groups.entries()];
 }
 
 export function ScenarioGrid({
@@ -56,50 +36,50 @@ export function ScenarioGrid({
 }: {
   scenarios: readonly Scenario[];
 }) {
-  const reduceMotion = useReducedMotion();
-
   return (
-    <div className="mt-8 grid gap-5 sm:gap-6 lg:grid-cols-2">
-      {scenarios.map((scenario, index) => {
-        return (
-          <motion.article
-            key={scenario.id}
-            className="scenario-card relative flex min-h-[24rem] flex-col overflow-hidden rounded-panel p-6 text-scenario-ink sm:min-h-[32rem] sm:p-8"
-            style={{ backgroundColor: cardColors[index % cardColors.length] }}
-            initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.24,
-              delay: reduceMotion ? 0 : Math.min(index, 8) * 0.04,
-              ease: [0.23, 1, 0.32, 1],
-            }}
+    <>
+      {groupsByStep(scenarios).map(([step, entries], index) => (
+        <section
+          key={step}
+          aria-labelledby={`failure-step-${step}`}
+          // Section turns carry the same hairline divider the metrics page
+          // uses between its sections; the first group follows the page
+          // header's own divider, so it takes only the margin.
+          className={
+            index === 0 ? "mt-10" : "mt-10 border-t border-border pt-10"
+          }
+        >
+          {/* One step label per group instead of the same words repeated on
+              every entry: the step is the grouping key, not per-row data. */}
+          <h2
+            id={`failure-step-${step}`}
+            // Same hash-target clearance main#main-content gets from the
+            // sticky header, so a jump to a step group lands clear of it.
+            className="scroll-mt-16 text-lg font-semibold"
           >
-            <div className="flex items-start justify-between gap-4">
-              <p className="max-w-[70%] font-data text-2xs uppercase tracking-[0.08em]">
-                {eyebrowLabels[scenario.id] ?? scenario.id.replaceAll("_", " ")}
-              </p>
-              <span className="shrink-0 font-data text-2xs uppercase tracking-[0.08em]">
-                {stepLabel(scenario.step)}
-              </span>
-            </div>
-            <h2 className="mt-7 max-w-[18ch] font-display text-[clamp(2rem,4.5vw,2.5rem)] font-medium leading-none text-balance">
-              {titleLabels[scenario.id] ?? scenario.title}
-            </h2>
-            <div className="scenario-card__panel mt-auto rounded-[0.9375rem] border border-scenario-panel-edge bg-scenario-panel p-5 shadow-[var(--scenario-lift)] sm:p-6">
-              <p className="font-data text-2xs uppercase tracking-[0.08em] text-scenario-ink-secondary">
-                Controller response
-              </p>
-              <p className="mt-2 text-lg font-semibold leading-6">
-                {responseLabels[scenario.response] ??
-                  scenario.response.replaceAll("_", " ")}
-              </p>
-              <p className="mt-4 max-w-[58ch] text-sm leading-6 text-scenario-ink-secondary">
-                {outcomeLabel(scenario)}
-              </p>
-            </div>
-          </motion.article>
-        );
-      })}
-    </div>
+            {stepLabel(step)}
+          </h2>
+          <dl className="mt-4 grid gap-x-16 gap-y-6 sm:grid-cols-2">
+            {entries.map((scenario) => (
+              // The id is an invisible deep-link handle (e.g. an escalation
+              // reason can reference /failure-scenarios#reordered-webhook);
+              // no visible anchor affordance — the title is not a control.
+              <div
+                key={scenario.id}
+                id={scenario.id}
+                className="min-w-0 scroll-mt-16"
+              >
+                <dt className="text-balance text-sm font-medium">
+                  {scenario.title}
+                </dt>
+                <dd className="mt-1 max-w-prose text-sm leading-6">
+                  {scenario.outcome}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
+    </>
   );
 }

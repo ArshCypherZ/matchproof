@@ -11,19 +11,56 @@ const optionalCell = <T extends z.ZodType>(schema: T) =>
     schema,
   );
 
+// Every message is written for the operator who reads it in the import
+// result table, so each one names its column and states the expected value
+// instead of quoting the validator's internals.
 export const LedgerRowSchema = z.object({
-  order_id: z.string().trim().min(3).max(128),
-  payment_id: optionalCell(z.string().trim().min(1).max(128).optional()),
-  state: z.enum(["pending", "paid"]),
+  order_id: z
+    .string()
+    .trim()
+    .min(3, "order_id must be 3 to 128 characters, for example order_NyXX...")
+    .max(
+      128,
+      "order_id must be 3 to 128 characters, for example order_NyXX...",
+    ),
+  payment_id: optionalCell(
+    z
+      .string()
+      .trim()
+      .min(1, "payment_id must be 1 to 128 characters when provided")
+      .max(128, "payment_id must be 1 to 128 characters when provided")
+      .optional(),
+  ),
+  state: z.enum(["pending", "paid"], {
+    message: "state must be 'pending' or 'paid'",
+  }),
   // Capped at the Postgres integer column bound so one oversized row is
   // rejected per-row; a bad row does not abort the whole import.
-  amount_minor: z.coerce.number().int().positive().max(2_147_483_647),
+  amount_minor: z.coerce
+    .number({
+      message:
+        "amount_minor must be a positive whole number in the smallest currency unit, for example 29900 for 299.00",
+    })
+    .int(
+      "amount_minor must be a positive whole number in the smallest currency unit, for example 29900 for 299.00",
+    )
+    .positive(
+      "amount_minor must be a positive whole number in the smallest currency unit, for example 29900 for 299.00",
+    )
+    .max(2_147_483_647, "amount_minor is too large; the maximum is 2147483647"),
   currency: z
     .string()
     .trim()
-    .length(3)
-    .transform((value) => value.toUpperCase()),
-  updated_at: optionalCell(z.string().datetime().optional()),
+    .length(3, "currency must be a 3-letter ISO code, for example INR"),
+  updated_at: optionalCell(
+    z
+      .string()
+      .datetime({
+        message:
+          "updated_at must be an ISO timestamp, for example 2026-08-28T10:12:00Z",
+      })
+      .optional(),
+  ),
 });
 
 export type LedgerRow = z.infer<typeof LedgerRowSchema>;
@@ -100,14 +137,17 @@ function recordsFromMatrix(matrix: readonly string[][]): ParsedRecord[] {
     entry.some((cell) => cell.trim() !== ""),
   );
   const [header] = rows;
-  if (!header) throw new LedgerFormatError("the ledger file has no header row");
+  if (!header)
+    throw new LedgerFormatError(
+      "The file has no header row. The first row must name the columns, like the sample CSV.",
+    );
   const normalizedHeader = header.map((cell) => cell.trim().toLowerCase());
   const missing = REQUIRED_COLUMNS.filter(
     (column) => !normalizedHeader.includes(column),
   );
   if (missing.length)
     throw new LedgerFormatError(
-      `the ledger header is missing columns: ${missing.join(", ")}`,
+      `The header row is missing required columns: ${missing.join(", ")}.`,
     );
   return rows.slice(1).map((cells) => {
     const record: Record<string, string> = {};
@@ -127,10 +167,12 @@ async function recordsFromWorkbook(bytes: Uint8Array): Promise<ParsedRecord[]> {
       bytes as unknown as Parameters<typeof workbook.xlsx.load>[0],
     );
   } catch {
-    throw new LedgerFormatError("the XLSX file could not be read");
+    throw new LedgerFormatError(
+      "The XLSX file could not be opened. Check that it is a valid .xlsx workbook.",
+    );
   }
   const sheet = workbook.worksheets[0];
-  if (!sheet) throw new LedgerFormatError("the XLSX file has no worksheet");
+  if (!sheet) throw new LedgerFormatError("The XLSX file has no worksheet.");
   const matrix: string[][] = [];
   sheet.eachRow((row, rowNumber) => {
     const cells: string[] = [];
@@ -157,8 +199,7 @@ export async function parseLedgerRows(
   if (extension === "xlsx") parsed = await recordsFromWorkbook(bytes);
   else if (extension === "csv")
     parsed = recordsFromMatrix(parseCsv(new TextDecoder().decode(bytes)));
-  else
-    throw new LedgerFormatError("the ledger file must be a .csv or .xlsx file");
+  else throw new LedgerFormatError("The file must be a .csv or .xlsx file.");
   const rows: LedgerRow[] = [];
   const rejected: LedgerRejection[] = [];
   parsed.forEach((result, index) => {
@@ -167,10 +208,14 @@ export async function parseLedgerRows(
       rejected.push({
         row: index + 2,
         reason: result.error.issues
-          .map(
-            (issue: { path: PropertyKey[]; message: string }) =>
-              `${issue.path.join(".")}: ${issue.message}`,
-          )
+          .map((issue: { path: PropertyKey[]; message: string }) => {
+            // Schema messages already name their column; prefix only a
+            // message that does not, so no reason loses its column context.
+            const column = issue.path.join(".");
+            return column && !issue.message.startsWith(column)
+              ? `${column}: ${issue.message}`
+              : issue.message;
+          })
           .join("; "),
       });
   });

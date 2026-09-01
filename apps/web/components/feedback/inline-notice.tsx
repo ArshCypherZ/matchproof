@@ -15,7 +15,7 @@ export function InlineNotice({
   return (
     <div
       role="alert"
-      className="flex flex-col gap-4 border-l-2 border-warning bg-warning-soft px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-4 rounded-xl bg-warning-soft px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex gap-3">
         <AlertTriangle
@@ -24,7 +24,7 @@ export function InlineNotice({
         />
         <div>
           <p className="text-sm font-medium">{title}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+          <p className="mt-1 text-sm text-warning">{body}</p>
         </div>
       </div>
       {actionLabel && onAction ? (

@@ -1,4 +1,4 @@
-import { desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -33,6 +33,7 @@ import type {
   ProgressRecord,
   RecoveryInput,
   RecoveryAttempt,
+  IncidentExecutionReset,
   WebhookInput,
   WebhookRecord,
   WebhookProcessingInput,
@@ -279,23 +280,48 @@ export class PostgresIncidentRepository implements IncidentRepository {
       : undefined;
   }
   async startRecoveryAttempt(input: RecoveryAttempt) {
-    const rows = await this.db
-      .insert(recoveryAttempts)
-      .values({
-        executionKey: input.execution_key,
-        action: input.action,
-        status: input.status,
-        beforeState: input.before_state,
-        afterState: input.after_state,
-        error: input.error,
-        startedAt: new Date(input.started_at),
-        completedAt: input.completed_at
-          ? new Date(input.completed_at)
-          : undefined,
-      })
-      .onConflictDoNothing()
-      .returning({ executionKey: recoveryAttempts.executionKey });
-    return rows.length === 1;
+    return this.db.transaction(async (tx) => {
+      const rows = await tx
+        .insert(recoveryAttempts)
+        .values({
+          executionKey: input.execution_key,
+          action: input.action,
+          status: input.status,
+          beforeState: input.before_state,
+          afterState: input.after_state,
+          error: input.error,
+          startedAt: new Date(input.started_at),
+          completedAt: input.completed_at
+            ? new Date(input.completed_at)
+            : undefined,
+        })
+        .onConflictDoNothing()
+        .returning({ executionKey: recoveryAttempts.executionKey });
+      if (rows.length === 1) return true;
+      // A failed attempt is a recorded fact, not a terminal state: re-claim it
+      // so the repair can be retried. A started or succeeded attempt stays
+      // owned by its executor (the in-progress guard and the success
+      // idempotency guard both depend on that).
+      const claimed = await tx
+        .update(recoveryAttempts)
+        .set({
+          action: input.action,
+          status: input.status,
+          beforeState: input.before_state,
+          afterState: null,
+          error: null,
+          startedAt: new Date(input.started_at),
+          completedAt: null,
+        })
+        .where(
+          and(
+            eq(recoveryAttempts.executionKey, input.execution_key),
+            eq(recoveryAttempts.status, "failed"),
+          ),
+        )
+        .returning({ executionKey: recoveryAttempts.executionKey });
+      return claimed.length === 1;
+    });
   }
   async completeRecoveryAttempt(
     key: string,
@@ -368,6 +394,42 @@ export class PostgresIncidentRepository implements IncidentRepository {
     return row
       ? PostRepairStateObservationSchema.parse(row.observation)
       : undefined;
+  }
+  async resetIncidentExecution(input: IncidentExecutionReset) {
+    const now = new Date();
+    await this.db.transaction(async (tx) => {
+      if (input.executionKeys.length) {
+        await tx
+          .delete(recoveries)
+          .where(inArray(recoveries.executionKey, input.executionKeys));
+        await tx
+          .delete(recoveryAttempts)
+          .where(inArray(recoveryAttempts.executionKey, input.executionKeys));
+        await tx
+          .delete(postRepairStateObservations)
+          .where(
+            inArray(
+              postRepairStateObservations.executionKey,
+              input.executionKeys,
+            ),
+          );
+      }
+      await tx
+        .delete(incidentProgress)
+        .where(eq(incidentProgress.incidentId, input.incidentId));
+      // The incident keeps a detect record so it remains a detectable record
+      // while the closed loop re-executes from fresh evidence.
+      await tx
+        .insert(incidentProgress)
+        .values({
+          incidentId: input.incidentId,
+          step: "detect",
+          status: "completed",
+          updatedAt: now,
+          details: {},
+        })
+        .onConflictDoNothing();
+    });
   }
   async audit(type: string, payload: unknown) {
     const governancePayload = createAuditGovernancePayload(type, payload);

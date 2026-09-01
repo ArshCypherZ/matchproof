@@ -29,6 +29,21 @@ export async function POST(
   const result = await withStore(tenantId, async (store) => {
     const bundle = await store.incident(id);
     if (!bundle || (await store.incidentTenant(id)) !== tenantId) return null;
+    // Escalation is terminal, and so is reconciliation. Both states are read
+    // from the same progress rows the incident page uses to derive status, so
+    // the guard and the page can never disagree about what is finished. A
+    // rejected attempt records nothing: no audit row, no progress row.
+    const progress = await store.progress(id);
+    if (
+      progress.some(
+        (row) => row.step === "escalate" && row.status === "completed",
+      )
+    )
+      return { blocked: "already_escalated" as const };
+    if (
+      progress.some((row) => row.step === "close" && row.status === "completed")
+    )
+      return { blocked: "already_reconciled" as const };
     await store.audit("operator_escalate", {
       tenant_id: tenantId,
       actor,
@@ -44,7 +59,17 @@ export async function POST(
     });
     return { incident_id: id, action: "escalate", recorded: true };
   });
-  return result
-    ? Response.json(result)
-    : Response.json({ error: "not_found" }, { status: 404 });
+  if (!result) return Response.json({ error: "not_found" }, { status: 404 });
+  if ("blocked" in result)
+    return Response.json(
+      {
+        error: result.blocked,
+        reason:
+          result.blocked === "already_escalated"
+            ? "This exception is already escalated with its stopping reason."
+            : "This exception is already reconciled; there is nothing left to escalate.",
+      },
+      { status: 409 },
+    );
+  return Response.json(result);
 }

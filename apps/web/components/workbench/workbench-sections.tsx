@@ -33,7 +33,15 @@ export function WorkbenchSections({
       const hashTab = tabs.find(
         (tab) => window.location.hash === `#workbench-${tab}`,
       );
-      if (hashTab) setActive(hashTab);
+      if (!hashTab) return;
+      setActive(hashTab);
+      // The browser's own hash scroll ran against a panel that was still
+      // display:none in the served HTML, so it went nowhere; carry the
+      // visitor to the section the link promised (scroll-mt clears the
+      // sticky header).
+      document
+        .getElementById(`workbench-${hashTab}`)
+        ?.scrollIntoView({ block: "start" });
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -67,7 +75,7 @@ export function WorkbenchSections({
       <div
         role="tablist"
         aria-label="Exception workbench sections"
-        className="mt-5 grid grid-cols-3 border-b border-border md:hidden"
+        className="mt-6 grid grid-cols-3 border-b border-border md:hidden"
       >
         {tabs.map((tab) => (
           <button
@@ -84,7 +92,7 @@ export function WorkbenchSections({
             }}
             onClick={() => selectTab(tab)}
             onKeyDown={(event) => handleKeyDown(event, tab)}
-            className={`focus-ring border-b-2 px-2 py-3 text-xs font-medium ${active === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground"}`}
+            className={`focus-ring px-2 py-3 text-xs font-medium transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] pointer-coarse:min-h-11 ${active === tab ? "bg-surface-subtle text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             {tabLabels[tab]}
           </button>
@@ -94,7 +102,11 @@ export function WorkbenchSections({
           role="tabpanel" — at md and up the referenced tabs are display-none
           and the panels would advertise tab semantics with no tablist. Each
           panel's section heading is its accessible name at every size. */}
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+      {/* Major sections (header, rail, workbench) hold one 32px cadence at md
+          and up; below md the tab strip attaches to the panels it controls,
+          so the strip separates from the rail by 24px and the panels sit
+          20px under their tabs. */}
+      <div className="mt-5 grid gap-8 md:mt-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
         <div
           id="workbench-evidence"
           className={`${active === "evidence" ? "block" : "hidden"} min-w-0 scroll-mt-24 md:block`}

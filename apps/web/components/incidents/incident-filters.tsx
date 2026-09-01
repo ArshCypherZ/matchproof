@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { CLASS_FACETS, STATUS_FACETS, normalizeFacet } from "./queue-facets";
+import { CLASS_FACETS, CLASS_LABELS, normalizeFacet } from "./queue-facets";
 import { registerQueueSearch } from "./queue-shortcuts";
 import {
   Select,
@@ -18,27 +18,6 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 350;
 
-// Operator-facing labels for the facet vocabularies. The select items are
-// generated from the same facet arrays the server validates against, so the
-// offered values can never drift from the accepted ones.
-const STATUS_LABELS: Record<string, string> = {
-  pending: "Pending",
-  reconciled: "Verified",
-  escalated: "Escalated",
-  ambiguous: "Ambiguous",
-};
-
-const CLASS_LABELS: Record<string, string> = {
-  paid_pending: "Paid, order pending",
-  paid_missing: "Paid, order missing",
-  one_payment_two_orders: "One payment, two orders",
-  capture_timeout: "Capture timeout",
-  callback_missing_webhook_recovers: "Callback missing, webhook recovers",
-  webhook_delivery_failure: "Webhook delivery failure",
-  late_authorized: "Late authorization",
-  settlement_exception: "Settlement exception",
-};
-
 export function IncidentFilters() {
   const router = useRouter();
   const pathname = usePathname();
@@ -48,8 +27,6 @@ export function IncidentFilters() {
 
   // A facet value outside the queue's vocabulary is treated as no filter, so
   // the select never renders blank while the queue silently narrows.
-  const statusValue =
-    normalizeFacet(params.get("status") ?? undefined, STATUS_FACETS) ?? "all";
   const classValue =
     normalizeFacet(params.get("class") ?? undefined, CLASS_FACETS) ?? "all";
 
@@ -104,61 +81,56 @@ export function IncidentFilters() {
           />
           <Input
             ref={(node) => registerQueueSearch(node)}
-            aria-label="Search incident, payment, or order ID"
+            aria-label="Search exception, payment, or order ID"
             className="pl-9"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             type="search"
-            placeholder="Search incident, payment, or order ID"
+            autoComplete="off"
+            maxLength={120}
+            placeholder="Search exception, payment, or order ID"
           />
         </div>
-        <p className="mt-1.5 hidden font-data text-2xs tracking-[0.08em] text-muted-foreground md:block">
-          <kbd className="rounded-sm border border-border bg-surface-subtle px-1 py-px">
-            j
-          </kbd>{" "}
-          <kbd className="rounded-sm border border-border bg-surface-subtle px-1 py-px">
-            k
-          </kbd>{" "}
-          <span className="uppercase">move</span> ·{" "}
-          <kbd className="rounded-sm border border-border bg-surface-subtle px-1 py-px">
+        <p className="mt-1.5 hidden text-xs text-muted-foreground md:block">
+          <span className="inline-flex items-center gap-1.5">
+            <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
+              j
+            </kbd>
+            <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
+              k
+            </kbd>
+          </span>{" "}
+          <span>move</span> ·{" "}
+          <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
             /
           </kbd>{" "}
-          <span className="uppercase">search</span> ·{" "}
-          <kbd className="rounded-sm border border-border bg-surface-subtle px-1 py-px">
+          <span>search</span> ·{" "}
+          <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
             Enter
           </kbd>{" "}
-          <span className="uppercase">open</span>
+          <span>open</span>
         </p>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:flex">
-        <Select
-          value={statusValue}
-          onValueChange={(value) => update("status", value ?? "all")}
-        >
-          <SelectTrigger
-            aria-label="Filter by status"
-            className="w-full sm:w-32"
-          >
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All status</SelectItem>
-            {STATUS_FACETS.map((facet) => (
-              <SelectItem key={facet} value={facet}>
-                {STATUS_LABELS[facet] ?? facet}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center gap-2">
         <Select
           value={classValue}
           onValueChange={(value) => update("class", value ?? "all")}
         >
           <SelectTrigger
             aria-label="Filter by exception type"
-            className="w-full sm:w-60"
+            className="w-full sm:w-72"
           >
-            <SelectValue placeholder="Exception type" />
+            {/* The trigger renders the operator label, never the raw facet:
+                Base UI cannot resolve item text during SSR, so the selected
+                value would otherwise show "all" / "paid_missing". */}
+            <SelectValue>
+              {(value) => {
+                const current = String(value ?? "");
+                return current === "all"
+                  ? "All types"
+                  : (CLASS_LABELS[current] ?? current);
+              }}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>

@@ -7,6 +7,7 @@ import { ArrowRight } from "lucide-react";
 import { requestContext, listIncidentDtos } from "@/lib/incidents";
 import { filterIncidentViews } from "@/lib/incident-query";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   CLASS_FACETS,
   STATUS_FACETS,
@@ -15,7 +16,6 @@ import {
 import { IncidentFilters } from "@/components/incidents/incident-filters";
 import { IncidentQueue } from "@/components/incidents/incident-table";
 import { IncidentSummaryLedger } from "@/components/incidents/incident-summary-ledger";
-import { SourceBadge } from "@/components/shared/source-badge";
 import { LiveRefresh } from "@/components/shared/live-refresh";
 import {
   ProviderEvidenceBand,
@@ -60,7 +60,10 @@ export default async function IncidentsPage({
   const { tenantId } = requestContext(headerList);
   const rawStatus = value(params, "status");
   const rawClass = value(params, "class");
-  const search = value(params, "q")?.trim().toLowerCase();
+  // Query strings are operator input: a pasted search must not balloon the
+  // URL or scan every field against a megabyte of text. Match the input's
+  // maxLength so a direct URL can never filter on a longer needle.
+  const search = value(params, "q")?.trim().toLowerCase().slice(0, 120);
   const status = normalizeFacet(rawStatus, STATUS_FACETS);
   const incidentClass = normalizeFacet(rawClass, CLASS_FACETS);
 
@@ -99,6 +102,10 @@ export default async function IncidentsPage({
     result[item.status] = (result[item.status] ?? 0) + 1;
     return result;
   }, {});
+  // Provenance: when the whole queue shares one source, a per-row Source
+  // column would repeat the same value on every line — the column appears
+  // only when sources are mixed.
+  const sources = new Set(filtered.map((item) => item.source_kind));
   const pageSize = boundedInteger(value(params, "page_size"), 25, 1, 100);
   const page = boundedInteger(value(params, "page"), 1, 1, 10_000);
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -116,6 +123,10 @@ export default async function IncidentsPage({
     next.set("page", String(nextPage));
     return `/incidents?${next.toString()}`;
   };
+  // The ledger is the status facet's only control (the filter row carries no
+  // duplicate status select). Clicking the active cell releases the facet back
+  // to "all" — a toggle, so a status filter never strands the operator without
+  // a one-click way out.
   const statusHrefs = Object.fromEntries(
     STATUS_FACETS.map((nextStatus) => {
       const next = new URLSearchParams();
@@ -123,15 +134,11 @@ export default async function IncidentsPage({
         const item = Array.isArray(raw) ? raw[0] : raw;
         if (item && key !== "page" && key !== "status") next.set(key, item);
       }
-      next.set("status", nextStatus);
-      return [nextStatus, `/incidents?${next.toString()}`];
+      if (nextStatus !== status) next.set("status", nextStatus);
+      const query = next.toString();
+      return [nextStatus, query ? `/incidents?${query}` : "/incidents"];
     }),
   );
-  const notchCount = Math.min(pageCount, 20);
-  const currentNotch =
-    pageCount === 1
-      ? 0
-      : Math.round(((currentPage - 1) / (pageCount - 1)) * (notchCount - 1));
   return (
     <main
       id="main-content"
@@ -140,30 +147,29 @@ export default async function IncidentsPage({
     >
       <div className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <div className="mb-3">
-            <SourceBadge source="fixture_rehearsal" />
-          </div>
-          <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
-            <h1 className="font-display text-4xl font-medium leading-none sm:text-5xl">
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+            <h1 className="font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
               Exceptions
             </h1>
-            <div className="flex items-baseline gap-2 pb-0.5 font-data">
-              <span className="text-[1.65rem] font-medium leading-none tabular-nums">
+            <div className="flex items-baseline gap-2 pb-0.5">
+              <span className="font-display text-xl font-medium leading-none tabular-nums">
                 {filtered.length}
               </span>
-              <span className="text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-                {filtered.length === 1 ? "exception" : "exceptions"} shown
+              <span className="text-xs text-muted-foreground">
+                {filtered.length === 1 ? "exception" : "exceptions"}
+                {status || incidentClass || search ? " shown" : ""}
               </span>
             </div>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Payment and order records awaiting verification or escalation.
+            Payment and order mismatches that need attention.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <LiveRefresh endpoint="/api/incidents/fingerprint" label="Queue" />
           <Button
             render={<Link href="/batches" />}
+            variant="outline"
             data-icon="inline-end"
             className="max-sm:w-full max-sm:flex-1"
           >
@@ -181,46 +187,46 @@ export default async function IncidentsPage({
           activeStatus={status}
         />
       </section>
-      <section className="mt-8 overflow-hidden rounded-lg border border-border bg-surface">
+      <Card className="mt-6">
         <IncidentFilters />
-        <IncidentQueue items={pageItems.map(toIncidentRow)} />
-        <div className="flex flex-col gap-3 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-end sm:px-5">
-          <div className="flex items-center justify-between gap-3 sm:justify-end">
+        <IncidentQueue
+          items={pageItems.map(toIncidentRow)}
+          showSource={sources.size > 1}
+        />
+        {pageCount > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:flex-nowrap sm:justify-end sm:px-5">
             <Button
-              render={<Link href={pageHref(Math.max(1, currentPage - 1))} />}
+              render={
+                currentPage <= 1 ? undefined : (
+                  <Link href={pageHref(Math.max(1, currentPage - 1))} />
+                )
+              }
               variant="outline"
               size="sm"
+              className="grow sm:grow-0"
               disabled={currentPage <= 1}
             >
               Previous
             </Button>
-            <span className="order-first text-center font-data sm:order-none">
+            <span className="order-last w-full text-center font-data sm:order-none sm:w-auto">
               Page {currentPage} of {pageCount}
             </span>
             <Button
               render={
-                <Link href={pageHref(Math.min(pageCount, currentPage + 1))} />
+                currentPage >= pageCount ? undefined : (
+                  <Link href={pageHref(Math.min(pageCount, currentPage + 1))} />
+                )
               }
               variant="outline"
               size="sm"
+              className="grow sm:grow-0"
               disabled={currentPage >= pageCount}
             >
               Next
             </Button>
           </div>
-          <span
-            aria-hidden="true"
-            className="hidden items-center gap-1 overflow-hidden sm:flex sm:max-w-32"
-          >
-            {Array.from({ length: notchCount }, (_, index) => (
-              <span
-                key={index}
-                className={`h-2 w-px shrink-0 ${index === currentNotch ? "bg-primary" : "bg-border"}`}
-              />
-            ))}
-          </span>
-        </div>
-      </section>
+        ) : null}
+      </Card>
     </main>
   );
 }

@@ -5,11 +5,9 @@ import {
   Radio,
   ShieldAlert,
 } from "lucide-react";
-import { TechBadge } from "@/components/shared/tech-badge";
 
 const labels = {
   razorpay_test: "Razorpay Test mode",
-  fixture_rehearsal: "Simulated exceptions",
   synthetic_evaluation: "Offline benchmark",
   redacted_archetype: "Reference case",
   measured_live: "Live data",
@@ -17,7 +15,15 @@ const labels = {
 
 export type SourceKind = keyof typeof labels;
 
+// Records from the internal rehearsal pipeline carry no provenance badge:
+// they are this app's own records, and labeling them adds no operator
+// value. Only external sources (the provider, live data) are labeled.
+const UNLABELED_SOURCES = new Set(["fixture_rehearsal"]);
+
+// Provenance is a property of the record, not a control: the badge renders
+// as a static label with no fill, so it never reads as clickable.
 export function SourceBadge({ source }: { source: string }) {
+  if (UNLABELED_SOURCES.has(source)) return null;
   const label = labels[source as SourceKind] ?? source;
   const Icon =
     source === "razorpay_test"
@@ -30,15 +36,9 @@ export function SourceBadge({ source }: { source: string }) {
             ? ShieldAlert
             : Database;
   return (
-    <TechBadge
-      accent={
-        source === "razorpay_test" || source === "measured_live"
-          ? "provider"
-          : "primary"
-      }
-    >
+    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground [&>svg]:size-3.5 [&>svg]:shrink-0">
       <Icon aria-hidden="true" />
       {label}
-    </TechBadge>
+    </span>
   );
 }

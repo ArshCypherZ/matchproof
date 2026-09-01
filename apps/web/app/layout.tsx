@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
-import { cn } from "@/lib/utils";
+import { Geist, Geist_Mono } from "next/font/google";
 import { AppHeader } from "@/components/app/app-header";
 import { AppFooter } from "@/components/app/app-footer";
 
@@ -10,18 +9,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-geist-mono",
 });
-const instrumentSerif = Instrument_Serif({
-  subsets: ["latin"],
-  variable: "--font-instrument-serif",
-  weight: "400",
-});
-
-const themeScript = `(function(){try{var root=document.documentElement;var stored=localStorage.getItem("app-theme");var theme=stored==="dark"||stored==="light"?stored:window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";root.classList.remove("light","dark");root.classList.add(theme)}catch(error){}})()`;
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#f6f6f3",
 };
 
 export const metadata: Metadata = {
@@ -39,17 +32,8 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      suppressHydrationWarning
-      className={cn(
-        "light font-sans",
-        geist.variable,
-        geistMono.variable,
-        instrumentSerif.variable,
-      )}
+      className={`${geist.variable} ${geistMono.variable} font-sans`}
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
       <body className="flex min-h-dvh flex-col">
         <a
           href="#main-content"

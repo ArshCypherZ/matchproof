@@ -17,7 +17,7 @@ export default function ErrorView({
 
   return (
     <main id="main-content" tabIndex={-1} className="page-rail py-10 sm:py-14">
-      <section className="max-w-2xl border-l-2 border-destructive pl-5">
+      <section className="max-w-2xl rounded-xl bg-destructive/10 p-5">
         <AlertTriangle
           aria-hidden="true"
           className="mb-4 size-5 text-destructive"

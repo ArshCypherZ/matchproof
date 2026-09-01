@@ -2,15 +2,20 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { inArray } from "drizzle-orm";
 import { requestContext, withStore } from "../../../lib/incidents";
 import { enforceRateLimit } from "../../../lib/rate-limit";
 import { sharedDatabase } from "../../../../../src/db/client";
-import { merchantOrders } from "../../../../../src/db/schema";
+import {
+  merchantOrders,
+  merchantOrderUpdates,
+} from "../../../../../src/db/schema";
 import { PostgresMerchantPlatformAdapter } from "../../../../../src/db/postgres-merchant-platform-adapter";
 import { EvidenceGatherer } from "../../../../../src/incident_commander/evidence-gatherer";
 import { PlaybookDiagnosisAdapter } from "../../../../../src/incident_commander/playbooks";
 import {
   RazorpayConfigurationError,
+  RazorpayInputError,
   createTestModeClient,
   createTestModeOrder,
   fetchTestModeOrder,
@@ -54,13 +59,87 @@ function client() {
   return createTestModeClient() as unknown as RazorpayClient;
 }
 
-function configurationError(error: unknown) {
+/* The Razorpay SDK does not throw Error instances: every API failure
+   surfaces as a thrown plain object `{ statusCode, error: { description } }`
+   (a 404 carries no error object at all), and a network-level failure never
+   reaches the API, so the SDK's own error normalizer throws a TypeError
+   while reading the response status. Classify each shape into a response the
+   stepper can quote: input mistakes the operator made read as 400s carrying
+   the provider's message, provider-side failures read as 503s, and no
+   failure leaves this route with an empty 500. */
+function providerFailure(error: unknown) {
   if (error instanceof RazorpayConfigurationError)
     return Response.json(
       { error: "razorpay_not_configured", reason: error.message },
       { status: 503 },
     );
-  return null;
+  if (error instanceof RazorpayInputError)
+    return Response.json(
+      { error: "invalid_input", reason: error.message },
+      { status: 400 },
+    );
+  if (error instanceof z.ZodError)
+    return Response.json(
+      {
+        error: "provider_unavailable",
+        reason:
+          "Razorpay answered with a record this system could not read. The step did not complete. Try again.",
+      },
+      { status: 503 },
+    );
+  if (error instanceof TypeError && error.message.includes("reading 'status'"))
+    return Response.json(
+      {
+        error: "provider_unavailable",
+        reason:
+          "Razorpay could not be reached. The step did not complete. Try again.",
+      },
+      { status: 503 },
+    );
+  if (
+    error !== null &&
+    typeof error === "object" &&
+    typeof (error as { statusCode?: unknown }).statusCode === "number"
+  ) {
+    const provider = error as {
+      statusCode: number;
+      error?: { description?: unknown };
+    };
+    const description =
+      typeof provider.error?.description === "string"
+        ? provider.error.description
+        : null;
+    if (provider.statusCode >= 400 && provider.statusCode < 500)
+      return Response.json(
+        {
+          error: "provider_rejected_request",
+          reason:
+            description ??
+            (provider.statusCode === 404
+              ? "Razorpay has no Test-mode record with that id."
+              : `Razorpay rejected the request (HTTP ${provider.statusCode}).`),
+        },
+        { status: 400 },
+      );
+    return Response.json(
+      {
+        error: "provider_unavailable",
+        reason: `Razorpay answered HTTP ${provider.statusCode}. The step did not complete. Try again.`,
+      },
+      { status: 503 },
+    );
+  }
+  // Anything left is a server-side failure this route cannot name; it still
+  // answers with a body, and the cause stays in the server log.
+  console.error("demo route step failed:", error);
+  return Response.json(
+    {
+      error: "demo_step_failed",
+      reason:
+        "The server hit an error and the step did not complete. Check the exception record before trying again.",
+    },
+    { status: 500 },
+  );
 }
 
 /** Find the staged incident for a demo order inside the tenant store. */
@@ -79,7 +158,7 @@ async function incidentForOrder(tenantId: string, orderId: string) {
 }
 
 export async function POST(request: Request) {
-  const limited = enforceRateLimit(request, "demo", {
+  const limited = await enforceRateLimit(request, "demo", {
     limit: 20,
     windowSeconds: 60,
   });
@@ -112,9 +191,7 @@ export async function POST(request: Request) {
         currency: body.data.currency,
       });
     } catch (error) {
-      const configured = configurationError(error);
-      if (configured) return configured;
-      throw error;
+      return providerFailure(error);
     }
   }
 
@@ -149,9 +226,7 @@ export async function POST(request: Request) {
         payment_status: captured?.status ?? records.at(-1)?.status ?? null,
       });
     } catch (error) {
-      const configured = configurationError(error);
-      if (configured) return configured;
-      throw error;
+      return providerFailure(error);
     }
   }
 
@@ -230,6 +305,15 @@ export async function POST(request: Request) {
             receivedAt,
             idempotencyKey: `webhook:${payment.id}`,
           }),
+          // A re-staged rehearsal re-executes the repair, so the merchant
+          // platform's idempotent acknowledgements for the prior run must go.
+          clearMerchantUpdateAcknowledgements: async (executionKeys) => {
+            await connection.db
+              .delete(merchantOrderUpdates)
+              .where(
+                inArray(merchantOrderUpdates.idempotencyKey, executionKeys),
+              );
+          },
         });
         await store.audit("demo_staged", {
           tenant_id: tenantId,
@@ -245,9 +329,7 @@ export async function POST(request: Request) {
         order_id: providerOrder.id,
       });
     } catch (error) {
-      const configured = configurationError(error);
-      if (configured) return configured;
-      throw error;
+      return providerFailure(error);
     }
   }
 
@@ -305,8 +387,6 @@ export async function POST(request: Request) {
       await fs.rm(path.dirname(fixture), { recursive: true, force: true });
     }
   } catch (error) {
-    const configured = configurationError(error);
-    if (configured) return configured;
-    throw error;
+    return providerFailure(error);
   }
 }

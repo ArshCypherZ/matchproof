@@ -1,19 +1,34 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { ArrowRight, Layers3 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import {
   requestContext,
   listBatchDtos,
   listIncidentDtos,
 } from "@/lib/incidents";
 import { Button } from "@/components/ui/button";
-import { SourceBadge } from "@/components/shared/source-badge";
+import { Card, CardHeader } from "@/components/ui/card";
+import { formatDate } from "@/components/shared/format";
+import { LiveRefresh } from "@/components/shared/live-refresh";
 import { StartBatchButton } from "@/components/batches/start-batch-button";
 
 export const metadata: Metadata = { title: "Batches" };
 
 export const dynamic = "force-dynamic";
+
+// A status band is a live state, not a brand mark. Tones match the queue's
+// StatusBadge exactly: pending and ambiguous both read as caution (awaiting
+// operator attention), escalated as destructive, reconciled as success.
+// Segments are sized by each status's share of the batch, so the read stays
+// honest at any batch size, and the legend beside the section heading plus
+// the aria-label spell out the exact counts beside the colors.
+const SEGMENT_TONES = [
+  ["pending", "Pending", "bg-warning"],
+  ["ambiguous", "Ambiguous", "bg-warning"],
+  ["escalated", "Escalated", "bg-destructive"],
+  ["reconciled", "Verified", "bg-success"],
+] as const;
 
 export default async function BatchesPage() {
   const headerList = await headers();
@@ -25,49 +40,77 @@ export default async function BatchesPage() {
   const incidentStatus = new Map(
     incidents.map((incident) => [incident.incident_id, incident.status]),
   );
+  const pendingIncidentIds = incidents
+    .filter((item) => item.status === "pending")
+    .map((item) => item.incident_id);
+  const batchWord = batches.length === 1 ? "batch" : "batches";
   return (
     <main
       id="main-content"
       tabIndex={-1}
       className="workspace-rail py-10 sm:py-14"
     >
-      <div className="flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-3">
-            <SourceBadge source="fixture_rehearsal" />
+      <div className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+            <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
+              Batches
+            </h1>
+            <div className="flex items-baseline gap-2 pb-0.5">
+              <span className="font-display text-xl font-medium leading-none tabular-nums">
+                {batches.length}
+              </span>
+              <span className="text-xs text-muted-foreground">{batchWord}</span>
+            </div>
           </div>
-          <h1 className="font-display text-4xl font-medium tracking-tight sm:text-5xl">
-            Batches
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">
-            Track batch progress and review exceptions that still need action.
+          <p className="mt-1 text-sm text-muted-foreground">
+            Start a batch from pending exceptions and track it to a close.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            render={<Link href="/incidents" />}
-            variant="outline"
-            data-icon="inline-end"
-          >
-            Choose exceptions <ArrowRight aria-hidden="true" />
-          </Button>
-          <StartBatchButton
-            incidentIds={incidents
-              .filter((item) => item.status === "pending")
-              .map((item) => item.incident_id)}
-          />
+        <div className="flex flex-col items-start gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <LiveRefresh endpoint="/api/batches/fingerprint" label="Batches" />
+            <Button
+              render={<Link href="/incidents" />}
+              variant="outline"
+              data-icon="inline-end"
+              className="max-sm:w-full"
+            >
+              Select exceptions <ArrowRight aria-hidden="true" />
+            </Button>
+            <StartBatchButton
+              incidentIds={pendingIncidentIds}
+              reasonId="start-batch-reason"
+            />
+          </div>
+          <p id="start-batch-reason" className="text-xs text-muted-foreground">
+            {pendingIncidentIds.length
+              ? `Starts a batch with all ${pendingIncidentIds.length} pending ${
+                  pendingIncidentIds.length === 1 ? "exception" : "exceptions"
+                }.`
+              : "Nothing to batch. Every exception is verified, escalated, or flagged ambiguous."}
+          </p>
         </div>
       </div>
-      <section className="mt-10 overflow-hidden border border-border bg-surface">
-        <div className="flex items-baseline gap-3 border-b border-border px-4 py-4 sm:px-5">
-          <span className="font-data text-2xs text-muted-foreground">
-            Batch history
-          </span>
-          <h2 className="text-sm font-semibold">Recent batches</h2>
-        </div>
+      <Card className="mt-10">
+        <CardHeader>
+          <h2 className="text-sm font-semibold">Batch history</h2>
+          {/* The band's colors are meaningless without their words: the
+              legend rides the header row, keyed to the same tone array the
+              rows render, so sighted and colorblind operators read the
+              proportions without opening a batch. */}
+          <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {SEGMENT_TONES.map(([key, label, tone]) => (
+              <span key={key} className="flex items-center gap-1.5">
+                <span aria-hidden="true" className={`size-2 ${tone}`} />
+                {label}
+              </span>
+            ))}
+          </div>
+        </CardHeader>
         {batches.length ? (
           <div className="divide-y divide-border">
-            {batches.map((batch, index) => {
+            {batches.map((batch) => {
               const counts = batch.incident_ids.reduce(
                 (result, incidentId) => {
                   const status = incidentStatus.get(incidentId) ?? "pending";
@@ -84,54 +127,70 @@ export default async function BatchesPage() {
                 },
                 { pending: 0, reconciled: 0, escalated: 0, ambiguous: 0 },
               );
+              const exceptionWord =
+                batch.incident_ids.length === 1 ? "exception" : "exceptions";
+              // The row's spoken name reads its meaning, not its hex: only
+              // statuses the batch actually holds enter the label.
+              const composition = SEGMENT_TONES.filter(
+                ([key]) => counts[key] > 0,
+              )
+                .map(([key, label]) => `${counts[key]} ${label.toLowerCase()}`)
+                .join(", ");
               return (
+                /* One row, one human label: when the batch started leads,
+                    and the id follows at its slice(0, 8) — the same short
+                    form the detail heading shows — so a 36-character UUID
+                    never becomes the row's identity. From sm up the label,
+                    band, and arrow share a line; below it the band flexes
+                    into the width the label gives up, giving its
+                    proportions more resolution than the fixed desktop
+                    width. Press feedback reuses the hover tone: touch
+                    never fires hover. History is append-only, so each row
+                    also carries the touch-action floor Buttons get and a
+                    content-visibility guard that keeps a long-lived
+                    tenant's list cheap to paint. */
                 <Link
                   key={batch.batch_id}
                   href={`/batches/${batch.batch_id}`}
-                  className="focus-ring animate-in fade-in slide-in-from-bottom-2 flex items-center justify-between gap-4 px-4 py-5 duration-500 hover:bg-surface-subtle sm:px-5"
-                  style={{
-                    animationDelay: `${Math.min(index, 8) * 45}ms`,
-                    animationFillMode: "both",
-                  }}
+                  className="focus-ring touch-manipulation [contain-intrinsic-size:auto_4.5rem] [content-visibility:auto] flex flex-col gap-2 px-4 py-4 transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] hover:bg-surface-subtle active:bg-surface-subtle sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid size-9 shrink-0 place-items-center bg-accent text-accent-foreground">
-                      <Layers3 aria-hidden="true" className="size-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate font-data text-sm">
-                        {batch.batch_id}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        <span className="font-data">
-                          {batch.incident_ids.length}
-                        </span>{" "}
-                        records started
-                      </p>
-                    </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {formatDate(batch.started_at)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      <span className="font-data" title={batch.batch_id}>
+                        {batch.batch_id.slice(0, 8)}
+                      </span>
+                      {" · "}
+                      <span className="font-data">
+                        {batch.incident_ids.length}
+                      </span>{" "}
+                      {exceptionWord}
+                    </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-4">
-                    <div
-                      role="img"
-                      aria-label={`${counts.pending} pending, ${counts.reconciled} verified, ${counts.escalated} escalated, ${counts.ambiguous} ambiguous`}
-                      className="grid w-28 grid-cols-12 gap-0.5"
-                    >
-                      {batch.incident_ids.slice(0, 12).map((incidentId) => {
-                        const status = incidentStatus.get(incidentId);
-                        const tone =
-                          status === "reconciled"
-                            ? "bg-primary"
-                            : status === "escalated"
-                              ? "bg-destructive"
-                              : "bg-warning";
-                        return (
-                          <span key={incidentId} className={`h-2 ${tone}`} />
-                        );
-                      })}
-                    </div>
+                  <div className="flex items-center justify-end gap-3 sm:shrink-0 sm:gap-4">
+                    {/* A batch that accepted nothing has no proportions to
+                        show: a blank strip reading "0, 0, 0, 0" would look
+                        broken, so the row speaks through its count alone. */}
+                    {batch.incident_ids.length > 0 ? (
+                      <div
+                        role="img"
+                        aria-label={composition}
+                        className="flex h-2 flex-1 overflow-hidden sm:w-28 sm:flex-none"
+                      >
+                        {SEGMENT_TONES.map(([key, , tone]) => (
+                          <span
+                            key={key}
+                            className={tone}
+                            style={{ flexGrow: counts[key] }}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                     <ArrowRight
                       aria-hidden="true"
-                      className="size-4 text-muted-foreground"
+                      className="size-4 shrink-0 text-muted-foreground"
                     />
                   </div>
                 </Link>
@@ -139,21 +198,25 @@ export default async function BatchesPage() {
             })}
           </div>
         ) : (
-          <div className="m-4 grid gap-6 border border-border bg-surface-raised p-6 sm:grid-cols-[1fr_auto] sm:items-end sm:p-8">
-            <div>
-              <p className="font-data text-2xs uppercase tracking-[0.12em]">
-                No batches yet
-              </p>
-              <p className="mt-4 max-w-md font-display text-3xl font-medium leading-tight tracking-tight">
-                Select pending exceptions to start the first batch.
-              </p>
-            </div>
-            <Button render={<Link href="/incidents" />} data-icon="inline-end">
-              Choose exceptions <ArrowRight aria-hidden="true" />
+          <div className="bg-surface-subtle px-5 py-16 text-center">
+            <p className="font-display text-2xl font-medium tracking-tight">
+              No batches yet
+            </p>
+            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+              {pendingIncidentIds.length
+                ? "Start a batch with every pending exception, or select specific ones in the queue."
+                : "Nothing is pending right now. Batches start from pending exceptions in the queue."}
+            </p>
+            <Button
+              render={<Link href="/incidents" />}
+              data-icon="inline-end"
+              className="mt-5"
+            >
+              Select exceptions <ArrowRight aria-hidden="true" />
             </Button>
           </div>
         )}
-      </section>
+      </Card>
     </main>
   );
 }

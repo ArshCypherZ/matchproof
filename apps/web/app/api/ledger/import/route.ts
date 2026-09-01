@@ -13,7 +13,7 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_LEDGER_ROWS = 5000;
 
 export async function POST(request: Request) {
-  const limited = enforceRateLimit(request, "ledger-import", {
+  const limited = await enforceRateLimit(request, "ledger-import", {
     limit: 5,
     windowSeconds: 60,
   });

@@ -39,12 +39,12 @@ export function IncidentPager({
   return (
     <nav
       aria-label="Adjacent exceptions in the queue"
-      className="flex shrink-0 items-center font-data text-2xs uppercase tracking-[0.08em] text-muted-foreground"
+      className="flex shrink-0 items-center text-xs text-muted-foreground"
     >
       {previousHref ? (
         <Link
           href={previousHref}
-          className="focus-ring inline-flex items-center gap-1 rounded-sm px-1.5 py-1 transition-colors hover:text-foreground"
+          className="focus-ring inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center"
         >
           <ArrowLeft aria-hidden="true" className="size-3" />
           Previous
@@ -62,9 +62,9 @@ export function IncidentPager({
       {nextHref ? (
         <Link
           href={nextHref}
-          className="focus-ring inline-flex items-center gap-1 rounded-sm px-1.5 py-1 transition-colors hover:text-foreground"
+          className="focus-ring inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center"
         >
-          Next exception
+          Next
           <ArrowRight aria-hidden="true" className="size-3" />
         </Link>
       ) : (
@@ -72,7 +72,7 @@ export function IncidentPager({
           aria-hidden="true"
           className="inline-flex items-center gap-1 px-1.5 py-1 text-ink-tertiary"
         >
-          Next exception
+          Next
           <ArrowRight aria-hidden="true" className="size-3" />
         </span>
       )}

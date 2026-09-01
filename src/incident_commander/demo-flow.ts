@@ -3,6 +3,8 @@ import type { Evidence } from "../domain/schemas";
 import type { RazorpayPayment } from "./razorpay";
 import { RazorpayWebhookInbox } from "./webhook";
 import { verifyBundle } from "./validation";
+import { recoveryExecutionKey } from "./recovery-executor";
+import { derivePaymentSeed } from "../db/repository";
 import type { IncidentStore } from "./core";
 
 export type DemoProviderOrder = {
@@ -51,6 +53,47 @@ export function demoIncidentId(paymentId: string) {
   return `inc_webhook_${paymentId}`;
 }
 
+/**
+ * Every execution key a demo run can record for one payment: the plain keys
+ * the workflow writes and the hashed keys the recovery executor derives. A
+ * re-staged rehearsal must clear exactly these rows, or the next run replays
+ * the prior outcome instead of re-executing the repair.
+ */
+export function demoExecutionKeys(input: {
+  incidentId: string;
+  paymentId: string;
+  orderId: string;
+  idempotencyKey: string;
+  tenantId: string;
+}) {
+  const context = {
+    tenantId: input.tenantId,
+    incidentId: input.incidentId,
+    paymentId: input.paymentId,
+    orderId: input.orderId,
+    // Only the canonical identity above feeds the hash; the before-state is
+    // required by the context type but never part of the key.
+    beforeState: "pending" as const,
+    targetState: "paid" as const,
+  };
+  const executionKey = (action: "reconcile_internal_state" | "escalate") =>
+    recoveryExecutionKey(
+      {
+        action,
+        allowed: true,
+        reason: "demo execution key derivation",
+        approval_required: null,
+      },
+      context,
+    );
+  return [
+    `reconcile_internal_state:${input.incidentId}:${input.paymentId}:${input.idempotencyKey}`,
+    `escalate:${input.incidentId}:${input.paymentId}:${input.idempotencyKey}`,
+    executionKey("reconcile_internal_state"),
+    executionKey("escalate"),
+  ];
+}
+
 /** The merchant order is deliberately left pending to stage the discrepancy. */
 export function demoMerchantEvidence(input: {
   orderId: string;
@@ -96,7 +139,17 @@ export async function stageDemoIncident(
     webhookSecret: string;
     processorSecret: string;
     eventId: string;
-    merchantEvidence: Evidence;
+    merchantEvidence: Extract<Evidence, { kind: "merchant_order_state" }>;
+    /**
+     * Clears the merchant platform's idempotent update acknowledgements for a
+     * prior run's execution keys. The incident store cannot reach the merchant
+     * tables, so the caller (which owns the merchant connection) provides the
+     * eraser; without it a re-staged run would read "already applied" for a
+     * repair that no longer holds.
+     */
+    clearMerchantUpdateAcknowledgements?: (
+      executionKeys: string[],
+    ) => Promise<void>;
   },
 ): Promise<StagedDemoIncident> {
   const inbox = new RazorpayWebhookInbox(store);
@@ -117,15 +170,35 @@ export async function stageDemoIncident(
   const incidentId = processed.incidentId;
   const bundle = await store.incident(incidentId);
   if (!bundle) throw new Error("the demo incident was not persisted");
+  // Staging the same payment again must be a genuinely fresh rehearsal: a
+  // prior run's terminal progress and durable repair records would otherwise
+  // be replayed, leaving the freshly staged discrepancy unresolvable.
+  const restaged = processed.status === "updated";
+  if (restaged) {
+    const executionKeys = demoExecutionKeys({
+      incidentId,
+      paymentId: bundle.payment_id,
+      orderId: input.merchantEvidence.payload.order_id,
+      idempotencyKey: bundle.idempotency_key,
+      tenantId: store.tenantId,
+    });
+    await store.resetIncidentExecution({ incidentId, executionKeys });
+    await input.clearMerchantUpdateAcknowledgements?.(executionKeys);
+  }
   const existing = new Map(
     bundle.evidence.map((entry) => [entry.evidence_id, entry]),
   );
   existing.set(input.merchantEvidence.evidence_id, input.merchantEvidence);
-  await store.updateIncident(
-    verifyBundle(
-      { ...bundle, evidence: [...existing.values()] },
-      input.processorSecret,
-    ),
+  const staged = verifyBundle(
+    { ...bundle, evidence: [...existing.values()] },
+    input.processorSecret,
   );
+  await store.updateIncident(staged);
+  if (restaged) {
+    // The controller-observed payment state must describe the re-staged
+    // discrepancy, not the prior run's verified outcome.
+    const seed = derivePaymentSeed(staged);
+    if (seed) await store.updatePayment(bundle.payment_id, seed.state);
+  }
   return { incidentId, paymentId: bundle.payment_id };
 }

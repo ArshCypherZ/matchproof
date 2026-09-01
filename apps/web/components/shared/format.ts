@@ -41,9 +41,16 @@ export function formatMoney(
 
 export function formatAge(seconds: number | null | undefined) {
   if (seconds == null || !Number.isFinite(seconds)) return "Unavailable";
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  // A record timestamped slightly in the future (clock skew between the
+  // pipeline and the operator's browser) must not read as a negative age.
+  const age = Math.max(0, seconds);
+  if (age < 60) return `${age}s`;
+  if (age < 3600) return `${Math.floor(age / 60)}m`;
+  const hours = Math.floor(age / 3600);
+  if (hours < 24) return `${hours}h ${Math.floor((age % 3600) / 60)}m`;
+  // Past a day the day count is the operator's number; leftover hours keep
+  // the age honest at a glance ("2d 3h", never "51h 0m").
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
 export function formatDate(value: string | null | undefined) {

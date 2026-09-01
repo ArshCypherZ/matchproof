@@ -1,20 +1,34 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pause, Radio, RefreshCw, WifiOff } from "lucide-react";
+import { Pause, Play, WifiOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-type Health = "live" | "retrying";
+type Health = "live" | "retrying" | "unavailable";
 
+/**
+ * The queue refreshes itself every few seconds and only re-renders when the
+ * data actually changed — so the healthy state needs no label. The operator
+ * gets exactly one control: pause, for when the queue must stop moving under
+ * a selection. A reconnecting indicator appears only when the refresh is
+ * actually failing, and every state change is announced politely.
+ *
+ * A polling endpoint can also answer 404 — the record it watches is gone.
+ * `stopOnNotFound` opts a surface into that reading: polling stops, because
+ * no retry can bring a deleted record back, and the notice says so instead
+ * of counting reconnect attempts at it.
+ */
 export function LiveRefresh({
   endpoint,
   label,
   interval = 5000,
+  stopOnNotFound = false,
 }: {
   endpoint: string;
   label: string;
   interval?: number;
+  stopOnNotFound?: boolean;
 }) {
   const router = useRouter();
   const fingerprint = useRef<string | null>(null);
@@ -30,7 +44,6 @@ export function LiveRefresh({
     undefined,
   );
   const stoppedRef = useRef(false);
-  const pollNowRef = useRef<() => void>(() => {});
 
   const announce = useCallback((message: string) => {
     setAnnouncement(message);
@@ -56,6 +69,15 @@ export function LiveRefresh({
       let ok = false;
       try {
         const response = await fetch(endpoint, { cache: "no-store" });
+        if (stopOnNotFound && response.status === 404) {
+          // Terminal: the record is gone, and re-announcing that on every
+          // tab switch would shout. Say it once and stop the timer.
+          const first = healthRef.current !== "unavailable";
+          healthRef.current = "unavailable";
+          setHealth("unavailable");
+          if (first) announce(`${label} is no longer available`);
+          return;
+        }
         if (!response.ok) throw new Error("refresh failed");
         const body = await response.text();
         let next = body;
@@ -74,7 +96,7 @@ export function LiveRefresh({
         ok = true;
         failures = 0;
         setRetryWait(0);
-        if (healthRef.current === "retrying") announce("Live updates resumed");
+        if (healthRef.current === "retrying") announce("Updates resumed");
         healthRef.current = "live";
         setHealth("live");
       } catch {
@@ -90,16 +112,6 @@ export function LiveRefresh({
       timerRef.current = setTimeout(() => void runPoll(), delay);
     };
 
-    pollNowRef.current = () => {
-      clearTimer();
-      // A manual refresh says what it found even when nothing changed, so
-      // the button press always produces feedback.
-      const before = fingerprint.current;
-      return runPoll().then(() => {
-        if (fingerprint.current === before) announce("No changes");
-      });
-    };
-
     const handleVisibility = () => {
       clearTimer();
       if (!document.hidden && !pausedRef.current) void runPoll();
@@ -113,7 +125,7 @@ export function LiveRefresh({
       clearTimer();
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [endpoint, interval, label, router, paused, announce]);
+  }, [endpoint, interval, label, router, paused, announce, stopOnNotFound]);
 
   useEffect(
     () => () => {
@@ -130,7 +142,7 @@ export function LiveRefresh({
       setRetryWait(0);
       pausedRef.current = false;
       setPaused(false);
-      announce("Live updates resumed");
+      announce("Updates resumed");
     } else {
       pausedRef.current = true;
       setPaused(true);
@@ -138,52 +150,52 @@ export function LiveRefresh({
     }
   };
 
-  const Icon = paused ? Pause : health === "retrying" ? WifiOff : Radio;
-  const iconTone = paused
-    ? "text-muted-foreground"
-    : health === "retrying"
-      ? "text-warning"
-      : "text-primary";
-  const statusText = paused
-    ? "Updates paused"
-    : health === "retrying"
-      ? "Reconnecting"
-      : "Live updates";
+  const reconnecting = health === "retrying" && !paused;
+  const unavailable = health === "unavailable";
 
   return (
-    <>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Icon aria-hidden="true" className={`size-3.5 ${iconTone}`} />
-          {statusText}
-          {health === "retrying" && !paused ? (
-            <span className="font-data text-2xs">
-              · {Math.max(1, Math.round(retryWait / 1000))}s
-            </span>
-          ) : null}
+    <div className="flex items-center gap-1.5">
+      {reconnecting ? (
+        <span className="inline-flex items-center gap-1.5 text-xs text-warning">
+          <WifiOff aria-hidden="true" className="size-3.5" />
+          Reconnecting
+          <span className="font-data text-2xs tabular-nums">
+            · {Math.max(1, Math.round(retryWait / 1000))}s
+          </span>
         </span>
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={togglePause}
-          className="font-data uppercase tracking-[0.08em]"
-        >
-          {paused ? "Resume" : "Pause"}
-        </Button>
-        <Button
-          variant="outline"
-          size="xs"
-          onClick={() => pollNowRef.current()}
-          data-icon="inline-start"
-          className="font-data uppercase tracking-[0.08em]"
-        >
-          <RefreshCw aria-hidden="true" className="size-3.5" />
-          Refresh
-        </Button>
-      </div>
+      ) : null}
+      {unavailable ? (
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <WifiOff aria-hidden="true" className="size-3.5" />
+          No longer available
+        </span>
+      ) : null}
+      {!unavailable ? (
+        paused ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={togglePause}
+            data-icon="inline-start"
+          >
+            <Play aria-hidden="true" className="size-3.5" />
+            Paused
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={togglePause}
+            aria-label={`Pause ${label.toLowerCase()} updates`}
+            title={`Pause ${label.toLowerCase()} updates`}
+          >
+            <Pause aria-hidden="true" />
+          </Button>
+        )
+      ) : null}
       <span className="sr-only" aria-live="polite">
         {announcement}
       </span>
-    </>
+    </div>
   );
 }

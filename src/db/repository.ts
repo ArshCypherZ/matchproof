@@ -153,6 +153,12 @@ export type RecoveryAttempt = {
   completed_at?: string;
 };
 
+export type IncidentExecutionReset = {
+  incidentId: string;
+  /** Every durable execution key the incident's runs may have recorded. */
+  executionKeys: string[];
+};
+
 export interface IncidentRepository {
   initialize(reset: boolean): Promise<void>;
   close(): Promise<void>;
@@ -185,6 +191,12 @@ export interface IncidentRepository {
   postRepairStateObservation(
     executionKey: string,
   ): Promise<PostRepairStateObservation | undefined>;
+  /**
+   * Clears one incident's durable loop progress and repair records so the
+   * closed loop re-executes instead of replaying a terminal outcome. Used when
+   * a rehearsal deliberately re-stages the same payment's discrepancy.
+   */
+  resetIncidentExecution(input: IncidentExecutionReset): Promise<void>;
   audit(type: string, payload: unknown): Promise<number | undefined>;
   auditRecords(): Promise<import("../domain/schemas").AuditEvent[]>;
   setProgress(

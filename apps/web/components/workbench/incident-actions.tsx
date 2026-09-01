@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 const ACTION_NOUN = {
-  approve: "The order update approval",
+  approve: "The approval",
   escalate: "The escalation",
 } as const;
 
@@ -25,6 +25,8 @@ async function actionError(
   const payload = (await response.json().catch(() => ({}))) as {
     reason?: string;
   };
+  if (response.status === 422 && payload.reason)
+    return `${noun} did not complete the repair: ${humanizeReason(payload.reason)}. No merchant state was changed. Fix the cause and approve again to retry the repair.`;
   if (response.status === 409 && payload.reason)
     return `${noun} was blocked: ${humanizeReason(payload.reason)}. Reload the page to see the current evidence.`;
   return `${noun} did not go through. No merchant state was changed. Try again.`;
@@ -36,15 +38,39 @@ function humanizeReason(reason: string) {
 
 const ESCALATE_REASON_MAX = 500;
 
+// Both dialogs share one shape: the approval gate is a modal by design, and
+// its chrome is defined once.
+const dialogClass =
+  "m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] overflow-y-auto overscroll-contain rounded-xl bg-surface p-0 text-foreground shadow-xl backdrop:bg-scrim";
+const dialogFooterClass =
+  "flex flex-col-reverse justify-end gap-2 border-t border-border px-5 py-4 sm:flex-row";
+
+function DialogAlert({ error }: { error: string }) {
+  return (
+    <div
+      role="alert"
+      className="flex gap-3 border-t border-border bg-warning-soft px-5 py-3"
+    >
+      <ShieldAlert
+        aria-hidden="true"
+        className="mt-0.5 size-4 shrink-0 text-warning"
+      />
+      <p className="text-sm text-muted-foreground">{error}</p>
+    </div>
+  );
+}
+
 export function IncidentActions({
   incidentId,
   canApprove,
+  canEscalate,
   targetOrderId,
   targetState,
   idempotencyKey,
 }: {
   incidentId: string;
   canApprove: boolean;
+  canEscalate: boolean;
   targetOrderId: string | null;
   targetState: string | null;
   idempotencyKey: string;
@@ -103,7 +129,7 @@ export function IncidentActions({
     const trimmed = reason.trim();
     if (!trimmed) {
       setReasonError(
-        "Write the stopping reason. It becomes the exception list entry.",
+        "Write the stopping reason. It is shown on the exception after escalation.",
       );
       return;
     }
@@ -111,27 +137,33 @@ export function IncidentActions({
     void mutate("escalate");
   };
 
+  // A terminal record offers no actions: re-escalating a finished exception
+  // or approving a closed one is never the operator's next move.
+  if (!canEscalate && !canApprove) return null;
+
   const actions = (compact = false) => (
     <>
-      <Button
-        variant="outline"
-        size={compact ? "sm" : "default"}
-        onClick={() => {
-          setReason("");
-          setReasonError(null);
-          setError(null);
-          escalateDialog.current?.showModal();
-        }}
-        disabled={pending !== null}
-        data-icon="inline-start"
-      >
-        {pending === "escalate" ? (
-          <LoaderCircle className="animate-spin" aria-hidden="true" />
-        ) : (
-          <ShieldAlert aria-hidden="true" />
-        )}
-        Escalate
-      </Button>
+      {canEscalate ? (
+        <Button
+          variant="outline"
+          size={compact ? "sm" : "default"}
+          onClick={() => {
+            setReason("");
+            setReasonError(null);
+            setError(null);
+            escalateDialog.current?.showModal();
+          }}
+          disabled={pending !== null}
+          data-icon="inline-start"
+        >
+          {pending === "escalate" ? (
+            <LoaderCircle className="animate-spin" aria-hidden="true" />
+          ) : (
+            <ShieldAlert aria-hidden="true" />
+          )}
+          Escalate
+        </Button>
+      ) : null}
       {canApprove ? (
         <Button
           size={compact ? "sm" : "default"}
@@ -156,7 +188,7 @@ export function IncidentActions({
         <div
           role="region"
           aria-label="Exception actions"
-          className="animate-capsule-pop fixed bottom-4 left-2 right-2 z-40 flex items-center justify-end gap-1.5 rounded-full border border-border bg-surface-raised px-2 py-2 motion-reduce:animate-none [margin-bottom:max(1rem,env(safe-area-inset-bottom))] sm:left-auto sm:px-3"
+          className="animate-capsule-pop fixed bottom-4 left-2 right-2 z-40 flex flex-wrap items-center justify-end gap-1.5 rounded-xl bg-surface-raised px-2 py-2 shadow-xl motion-reduce:animate-none [margin-bottom:max(1rem,env(safe-area-inset-bottom))] sm:left-auto sm:px-3"
         >
           {actions(true)}
         </div>
@@ -164,7 +196,12 @@ export function IncidentActions({
       <dialog
         ref={dialog}
         aria-labelledby="approval-title"
-        className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] overflow-y-auto overscroll-contain rounded-lg border border-border bg-surface-raised p-0 text-foreground backdrop:bg-scrim"
+        // Esc cannot dismiss the gate mid-flight: a request already sent can
+        // still change merchant state, so the operator must see its result.
+        onCancel={(event) => {
+          if (pending !== null) event.preventDefault();
+        }}
+        className={dialogClass}
       >
         <div className="border-b border-border px-5 py-4">
           <h2 id="approval-title" className="text-base font-semibold">
@@ -190,7 +227,7 @@ export function IncidentActions({
             <dt className="text-xs text-muted-foreground">
               One-time approval key
             </dt>
-            <dd className="mt-1 break-all font-data text-xs">
+            <dd translate="no" className="mt-1 break-all font-data text-xs">
               {idempotencyKey}
             </dd>
           </div>
@@ -202,19 +239,8 @@ export function IncidentActions({
             </dd>
           </div>
         </dl>
-        {error ? (
-          <div
-            role="alert"
-            className="flex gap-3 border-t border-border border-l-2 border-l-warning bg-warning-soft px-5 py-3"
-          >
-            <ShieldAlert
-              aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-warning"
-            />
-            <p className="text-sm text-muted-foreground">{error}</p>
-          </div>
-        ) : null}
-        <div className="flex flex-col-reverse justify-end gap-2 border-t border-border px-5 py-4 sm:flex-row">
+        {error ? <DialogAlert error={error} /> : null}
+        <div className={dialogFooterClass}>
           <Button
             variant="outline"
             onClick={() => dialog.current?.close()}
@@ -237,7 +263,10 @@ export function IncidentActions({
       <dialog
         ref={escalateDialog}
         aria-labelledby="escalate-title"
-        className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] overflow-y-auto overscroll-contain rounded-lg border border-border bg-surface-raised p-0 text-foreground backdrop:bg-scrim"
+        onCancel={(event) => {
+          if (pending !== null) event.preventDefault();
+        }}
+        className={dialogClass}
       >
         <div className="border-b border-border px-5 py-4">
           <h2 id="escalate-title" className="text-base font-semibold">
@@ -258,6 +287,8 @@ export function IncidentActions({
           </label>
           <textarea
             id="escalate-reason"
+            name="stopping-reason"
+            autoComplete="off"
             value={reason}
             onChange={(event) => {
               setReason(event.target.value.slice(0, ESCALATE_REASON_MAX));
@@ -273,7 +304,7 @@ export function IncidentActions({
                 : "escalate-reason-count"
             }
             placeholder="What evidence stopped the automated repair?"
-            className="mt-1 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-base outline-none md:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20"
+            className="mt-1 w-full resize-y rounded-md border border-input bg-surface px-2.5 py-2 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/40 md:text-sm"
           />
           <p
             id="escalate-reason-count"
@@ -291,19 +322,8 @@ export function IncidentActions({
             </p>
           ) : null}
         </div>
-        {error ? (
-          <div
-            role="alert"
-            className="flex gap-3 border-t border-border border-l-2 border-l-warning bg-warning-soft px-5 py-3"
-          >
-            <ShieldAlert
-              aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-warning"
-            />
-            <p className="text-sm text-muted-foreground">{error}</p>
-          </div>
-        ) : null}
-        <div className="flex flex-col-reverse justify-end gap-2 border-t border-border px-5 py-4 sm:flex-row">
+        {error ? <DialogAlert error={error} /> : null}
+        <div className={dialogFooterClass}>
           <Button
             variant="outline"
             onClick={() => escalateDialog.current?.close()}

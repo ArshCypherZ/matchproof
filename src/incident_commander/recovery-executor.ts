@@ -71,7 +71,11 @@ export class RecoveryExecutor {
         reason: "recovery already completed and durable state agrees",
       });
     const attempt = await this.repository.recoveryAttempt(key);
-    if (attempt?.status === "succeeded" || attempt?.status === "failed")
+    // A prior SUCCEEDED attempt means the mutation landed but its completion
+    // record may have been lost: replay it as the outcome. A prior FAILED
+    // attempt is a recorded fact, not a terminal state — the repair is retried
+    // by re-claiming the attempt row.
+    if (attempt?.status === "succeeded")
       return this.outcomeFromAttempt(key, parsed, attempt);
     const startedAt = this.now().toISOString();
     const claimed = await this.repository.startRecoveryAttempt({
@@ -83,7 +87,7 @@ export class RecoveryExecutor {
     });
     if (!claimed) {
       const duplicate = await this.repository.recoveryAttempt(key);
-      if (duplicate?.status === "succeeded" || duplicate?.status === "failed")
+      if (duplicate?.status === "succeeded")
         return this.outcomeFromAttempt(key, parsed, duplicate);
       throw new Error("recovery execution is already in progress");
     }
@@ -152,6 +156,8 @@ export class RecoveryExecutor {
     }
   }
 
+  // Only ever called with a succeeded attempt: a failed attempt never reaches
+  // this path (it is retried) and an in-progress one is never visible here.
   private outcomeFromAttempt(
     key: string,
     decision: PolicyGateDecision,
@@ -159,8 +165,6 @@ export class RecoveryExecutor {
       Awaited<ReturnType<IncidentRepository["recoveryAttempt"]>>
     >,
   ) {
-    if (attempt.status === "failed")
-      throw new Error(attempt.error ?? "recovery attempt failed");
     return RecoveryOutcomeSchema.parse({
       status: decision.action === "escalate" ? "escalated" : "reconciled",
       action: decision.action,

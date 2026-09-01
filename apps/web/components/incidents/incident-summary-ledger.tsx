@@ -18,20 +18,18 @@ export function IncidentSummaryLedger({
   activeStatus?: string;
 }) {
   return (
-    <div className="grid grid-cols-2 border-y border-border sm:grid-cols-4">
-      {items.map((item, index) => (
+    <div className="grid grid-cols-2 overflow-hidden rounded-xl bg-surface sm:grid-cols-4">
+      {items.map((item) => (
         <Link
           key={item.key}
           href={hrefs[item.key] ?? "/incidents"}
-          aria-current={activeStatus === item.key ? "page" : undefined}
-          className={`focus-ring border-border px-4 py-4 transition-colors hover:bg-surface-subtle aria-[current=page]:bg-surface-subtle sm:border-b-0 sm:border-r sm:last:border-r-0 ${index < 2 ? "border-b" : ""} ${index % 2 === 0 ? "border-r" : ""}`}
+          aria-pressed={activeStatus === item.key || undefined}
+          className="focus-ring px-4 py-4 transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] hover:bg-surface-subtle aria-pressed:bg-surface-subtle [&:nth-child(even)]:border-l [&:nth-child(n+3)]:border-t sm:[&:not(:first-child)]:border-l sm:[&:nth-child(n+3)]:border-t-0"
         >
-          <p className="font-display text-3xl font-medium">
+          <p className="font-display text-2xl font-medium leading-none tabular-nums">
             <Tally value={summary[item.key] ?? 0} />
           </p>
-          <p className="mt-1 font-data text-2xs uppercase tracking-[0.08em] text-muted-foreground">
-            {item.label}
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{item.label}</p>
         </Link>
       ))}
     </div>

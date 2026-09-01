@@ -5,40 +5,37 @@ import {
   Clock3,
   ShieldAlert,
 } from "lucide-react";
-import {
-  TechBadge,
-  type TechBadgeAccent,
-} from "@/components/shared/tech-badge";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
 
 const statusConfig = {
   pending: {
     label: "Pending",
-    accent: "warning",
+    variant: "caution" as BadgeVariant,
     icon: Clock3,
   },
   reconciled: {
     label: "Verified",
-    accent: "primary",
+    variant: "success" as BadgeVariant,
     icon: Check,
   },
   escalated: {
     label: "Escalated",
-    accent: "destructive",
+    variant: "danger" as BadgeVariant,
     icon: ShieldAlert,
   },
   ambiguous: {
     label: "Ambiguous",
-    accent: "warning",
+    variant: "caution" as BadgeVariant,
     icon: CircleOff,
   },
   active: {
     label: "Active",
-    accent: "primary",
+    variant: "active" as BadgeVariant,
     icon: CircleDashed,
   },
 } as const satisfies Record<
   string,
-  { label: string; accent: TechBadgeAccent; icon: typeof Clock3 }
+  { label: string; variant: BadgeVariant; icon: typeof Clock3 }
 >;
 
 export type StatusKind = keyof typeof statusConfig;
@@ -50,9 +47,9 @@ export function StatusBadge({ status }: { status: string }) {
   const Icon = config?.icon ?? CircleDashed;
   const label = config?.label ?? status.replaceAll("_", " ");
   return (
-    <TechBadge accent={config?.accent ?? "neutral"}>
+    <Badge variant={config?.variant ?? "neutral"}>
       <Icon aria-hidden="true" />
       {label}
-    </TechBadge>
+    </Badge>
   );
 }

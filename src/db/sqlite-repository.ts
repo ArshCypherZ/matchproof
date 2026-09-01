@@ -1,5 +1,5 @@
 import path from "node:path";
-import { desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { createSqliteDatabase, type SqliteDatabase } from "./sqlite-client";
 import {
@@ -30,6 +30,7 @@ import type {
   ProgressRecord,
   RecoveryInput,
   RecoveryAttempt,
+  IncidentExecutionReset,
   WebhookInput,
   WebhookRecord,
   WebhookProcessingInput,
@@ -286,21 +287,46 @@ export class SqliteIncidentRepository implements IncidentRepository {
       : undefined;
   }
   async startRecoveryAttempt(input: RecoveryAttempt) {
-    const result = this.db
-      .insert(recoveryAttempts)
-      .values({
-        executionKey: input.execution_key,
-        action: input.action,
-        status: input.status,
-        beforeState: input.before_state,
-        afterState: input.after_state,
-        error: input.error,
-        startedAt: input.started_at,
-        completedAt: input.completed_at,
-      })
-      .onConflictDoNothing()
-      .run();
-    return result.changes === 1;
+    return this.connection.client.transaction(() => {
+      const inserted = this.db
+        .insert(recoveryAttempts)
+        .values({
+          executionKey: input.execution_key,
+          action: input.action,
+          status: input.status,
+          beforeState: input.before_state,
+          afterState: input.after_state,
+          error: input.error,
+          startedAt: input.started_at,
+          completedAt: input.completed_at,
+        })
+        .onConflictDoNothing()
+        .run();
+      if (inserted.changes === 1) return true;
+      // A failed attempt is a recorded fact, not a terminal state: re-claim it
+      // so the repair can be retried. A started or succeeded attempt stays
+      // owned by its executor (the in-progress guard and the success
+      // idempotency guard both depend on that).
+      const claimed = this.db
+        .update(recoveryAttempts)
+        .set({
+          action: input.action,
+          status: input.status,
+          beforeState: input.before_state,
+          afterState: null,
+          error: null,
+          startedAt: input.started_at,
+          completedAt: null,
+        })
+        .where(
+          and(
+            eq(recoveryAttempts.executionKey, input.execution_key),
+            eq(recoveryAttempts.status, "failed"),
+          ),
+        )
+        .run();
+      return claimed.changes === 1;
+    })();
   }
   async completeRecoveryAttempt(
     key: string,
@@ -377,6 +403,47 @@ export class SqliteIncidentRepository implements IncidentRepository {
     return row
       ? PostRepairStateObservationSchema.parse(JSON.parse(row.observation))
       : undefined;
+  }
+  async resetIncidentExecution(input: IncidentExecutionReset) {
+    const now = new Date().toISOString();
+    this.connection.client.transaction(() => {
+      if (input.executionKeys.length) {
+        this.db
+          .delete(recoveries)
+          .where(inArray(recoveries.executionKey, input.executionKeys))
+          .run();
+        this.db
+          .delete(recoveryAttempts)
+          .where(inArray(recoveryAttempts.executionKey, input.executionKeys))
+          .run();
+        this.db
+          .delete(postRepairStateObservations)
+          .where(
+            inArray(
+              postRepairStateObservations.executionKey,
+              input.executionKeys,
+            ),
+          )
+          .run();
+      }
+      this.db
+        .delete(incidentProgress)
+        .where(eq(incidentProgress.incidentId, input.incidentId))
+        .run();
+      // The incident keeps a detect record so it remains a detectable record
+      // while the closed loop re-executes from fresh evidence.
+      this.db
+        .insert(incidentProgress)
+        .values({
+          incidentId: input.incidentId,
+          step: "detect",
+          status: "completed",
+          updatedAt: now,
+          details: "{}",
+        })
+        .onConflictDoNothing()
+        .run();
+    })();
   }
   async audit(type: string, payload: unknown) {
     const governancePayload = createAuditGovernancePayload(type, payload);

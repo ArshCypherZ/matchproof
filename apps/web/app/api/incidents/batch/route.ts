@@ -31,6 +31,10 @@ export async function POST(request: Request) {
       });
       accepted.push(incidentId);
     }
+    // A rejected request must leave no trace: the batch audit row is what the
+    // batches page lists, so it is recorded only once at least one incident
+    // was accepted for this tenant.
+    if (!accepted.length) return [];
     await store.audit("batch_started", {
       tenant_id: tenantId,
       actor,

@@ -47,15 +47,25 @@ async function approveIncident(
     const bundle = await store.incident(id);
     if (!bundle || (await store.incidentTenant(id)) !== tenantId) return null;
     const connection = sharedDatabase();
-    return await executeApprovedRecovery({
-      store,
-      incidentId: id,
-      tenantId,
-      actor,
-      ...(reason ? { reason } : {}),
-      merchant: new PostgresMerchantPlatformAdapter(connection.db),
-      provider: new RazorpayProviderPostRepairStateAdapter(),
-    });
+    try {
+      return await executeApprovedRecovery({
+        store,
+        incidentId: id,
+        tenantId,
+        actor,
+        ...(reason ? { reason } : {}),
+        merchant: new PostgresMerchantPlatformAdapter(connection.db),
+        provider: new RazorpayProviderPostRepairStateAdapter(),
+      });
+    } catch (error) {
+      // The repair itself failed (for example the merchant order was missing).
+      // The failed attempt is recorded durably; report it as an operator-
+      // readable error instead of an empty 500 so the retry path stays visible.
+      return {
+        status: "execution_failed" as const,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
   });
   if (!result) return Response.json({ error: "not_found" }, { status: 404 });
   switch (result.status) {
@@ -75,6 +85,11 @@ async function approveIncident(
       return Response.json(
         { error: "blocked", reason: result.reason },
         { status: 409 },
+      );
+    case "execution_failed":
+      return Response.json(
+        { error: "recovery_failed", reason: result.reason },
+        { status: 422 },
       );
     case "executed":
       return Response.json({

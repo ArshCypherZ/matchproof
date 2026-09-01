@@ -20,6 +20,20 @@ export const CLASS_FACETS = [
   "settlement_exception",
 ] as const;
 
+// Operator-facing labels for the class vocabulary. Every surface (filter,
+// queue rows) reads from this one map so an exception type says the same
+// thing everywhere; an unknown class falls back to its raw facet name.
+export const CLASS_LABELS: Record<string, string> = {
+  paid_pending: "Paid, order pending",
+  paid_missing: "Paid, order missing",
+  one_payment_two_orders: "One payment, two orders",
+  capture_timeout: "Capture timeout",
+  callback_missing_webhook_recovers: "Callback missing, webhook recovers",
+  webhook_delivery_failure: "Webhook delivery failure",
+  late_authorized: "Late authorization",
+  settlement_exception: "Settlement exception",
+};
+
 export function normalizeFacet<T extends string>(
   raw: string | undefined,
   valid: readonly T[],

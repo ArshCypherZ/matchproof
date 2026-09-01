@@ -2,8 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme {
   /* Small-type scale: nothing below 12px, sizes in rem so the root
      scale (html font-size) and user browser settings carry through. */
@@ -22,13 +20,13 @@
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-geist-sans);
   --font-display: var(--font-geist-sans);
-  --font-serif: var(--font-instrument-serif), Georgia, serif;
-  --ease-out-expo: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-spring: cubic-bezier(0.22, 1.08, 0.36, 1);
-  --animate-enter-rise: enter-rise 240ms var(--ease-out-expo) both;
+  /* One motion system: ease-out for state change, emphasized for
+     spatial moves. Only animate the properties that change. */
+  --ease-out-expo: var(--motion-ease-out);
+  --animate-enter-rise: enter-rise 240ms var(--motion-ease-out) both;
   --animate-wave-pulse: wave-pulse 1.6s linear infinite;
-  --animate-capsule-pop: capsule-pop 240ms var(--ease-spring) both;
-  --animate-stamp-press: stamp-press 280ms var(--ease-spring) both;
+  --animate-capsule-pop: capsule-pop 260ms var(--motion-ease-out) both;
+  --animate-capsule-fade: capsule-fade 160ms var(--motion-ease-out) both;
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -56,183 +54,90 @@
   --color-provider-soft: var(--provider-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
-  --color-signature: var(--signature);
-  --color-stamp: var(--stamp);
-  --color-on-ink-signature: var(--on-ink-signature);
-  --color-on-ink-provider: var(--on-ink-provider);
-  --color-on-ink-warning: var(--on-ink-warning);
-  --color-on-ink-destructive: var(--on-ink-destructive);
+  --color-success: var(--success);
+  --color-success-strong: var(--success-strong);
+  --color-destructive-strong: var(--destructive-strong);
+  --color-ring-strong: var(--ring-strong);
+  --color-provider-strong: var(--provider-strong);
+  --color-selection: var(--selection);
+  --color-selection-foreground: var(--selection-foreground);
   --color-scrim: var(--scrim);
-  --color-ticket: var(--ticket);
-  --color-ticket-ink: var(--ticket-ink);
-  --color-ticket-paper: var(--ticket-paper);
-  --color-scenario-1: var(--scenario-1);
-  --color-scenario-2: var(--scenario-2);
-  --color-scenario-3: var(--scenario-3);
-  --color-scenario-4: var(--scenario-4);
-  --color-scenario-5: var(--scenario-5);
-  --color-scenario-ink: var(--scenario-ink);
-  --color-scenario-ink-secondary: var(--scenario-ink-secondary);
-  --color-scenario-panel: var(--scenario-panel);
-  --color-scenario-panel-edge: var(--scenario-panel-edge);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --color-brand-red: var(--brand-red);
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-black: var(--brand-black);
+  /* Radius scale (additive): buttons lg, cards/panels xl,
+     chips/inputs md. Nothing ships sharp; nothing is a pill. */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-  /* Printed panels (the failure-scenario cards): 22px. */
-  --radius-panel: 1.375rem;
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
 }
 
-:root,
-.light {
+:root {
   color-scheme: light;
-  --background: #f2eee5;
-  --foreground: #181715;
-  --card: #fbf8f1;
-  --card-foreground: #181715;
-  --popover: #fbf8f1;
-  --popover-foreground: #181715;
-  --primary: #181715;
-  --primary-foreground: #fbf8f1;
-  --secondary: #e8e1d5;
-  --secondary-foreground: #181715;
-  --muted: #e8e1d5;
-  --muted-foreground: #625f59;
-  --accent: #e8e1d5;
-  --accent-foreground: #181715;
-  --destructive: #c63f32;
-  --border: #cec7ba;
-  /* Control boundary at rest: darker than the hairline so empty fields stay
-     findable on paper (3.7:1 on canvas, 3.4:1 on surface). */
-  --input: #7f786c;
-  --ring: #e74432;
-  --radius: 0.5rem;
-  --canvas: #f2eee5;
-  --surface: #e8e1d5;
-  --surface-raised: #fbf8f1;
-  --surface-subtle: #eee8dd;
-  --ink-secondary: #625f59;
-  /* Kept at/above 4.5:1 on card, surface, and surface-subtle: it carries
-     small label text (loop-rail steps), not hairline decoration alone. */
-  --ink-tertiary: #666158;
-  --hairline: #cec7ba;
+  /* One implicit theme (the operator console scene). Components separate
+     from the canvas by a tonal surface step, not by border strokes. */
+  --background: #f6f6f3;
+  --foreground: #121212;
+  --card: #ffffff;
+  --card-foreground: #121212;
+  --popover: #ffffff;
+  --popover-foreground: #121212;
+  --primary: #0d0d0f;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0ec;
+  --secondary-foreground: #121212;
+  --muted: #f0f0ec;
+  --muted-foreground: #62625d;
+  --accent: #f0f0ec;
+  --accent-foreground: #121212;
+  --destructive: #d14343;
+  --destructive-foreground: #ffffff;
+  /* Hairlines live on data tables and dividers only. */
+  --border: #dfdfd7;
+  /* Control edges only (inputs, outline buttons). */
+  --input: #b9b9b1;
+  /* The one quiet accent: focus, active, running. */
+  --ring: #008a83;
+  --radius: 0.3125rem;
+  --canvas: #f6f6f3;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-subtle: #f0f0ec;
+  --ink-secondary: #62625d;
+  --ink-tertiary: #706e69;
+  --hairline: #dfdfd7;
   --provider: #4f70ee;
-  --provider-soft: #c9dcff;
-  /* Warning text sits on warning-soft chips (judgment panel), so it
-     clears 4.5:1 against #f3dfc4, not merely the page canvas. */
+  --provider-soft: #e7edff;
+  /* Warning text sits on warning-soft chips, so it clears 4.5:1 there. */
   --warning: #824c0b;
-  --warning-soft: #f3dfc4;
-  --selection: #ffb0a5;
-  --selection-foreground: #171a18;
-  --signature: #e74432;
-  /* Dried-ink red for stamp lettering; darker than the signature accent
-     so the caps hold contrast as text on paper. */
-  --stamp: #b8301f;
-  /* Accent icons on inverted (ink-fill) chips: semantic accents are tuned
-     against paper, so the ink chip needs its own pair. Warning flips per
-     theme; the rest hold across both because the ink fill inverts with
-     them. */
-  --on-ink-signature: #e74432;
-  --on-ink-provider: #4f70ee;
-  --on-ink-warning: #e3a75e;
-  --on-ink-destructive: #c63f32;
-  /* Dialog scrim: warm ink, never cold black. */
-  --scrim: rgb(24 23 21 / 45%);
-  --cord: #5d5850;
-  --cord-socket: #e8e1d5;
-  --cord-handle: #181715;
-  --cord-highlight: #f2eee5;
-  --cord-glow: rgb(255 199 77 / 34%);
-  /* Fixed-composition palette for the demo ticket: a safety-yellow admit
-     ticket that keeps its own contrast pair in both themes. */
-  --ticket: #f1d87a;
-  --ticket-ink: #17201c;
-  --ticket-paper: #edf3ef;
-  /* Scenario cards: printed panels on fixed pastel stocks; the ink pair
-     stays constant so the cards read the same in light and dark themes. */
-  --scenario-1: #f2c84b;
-  --scenario-2: #63d8c9;
-  --scenario-3: #aea6ff;
-  --scenario-4: #c9ff73;
-  --scenario-5: #d7a5aa;
-  --scenario-ink: #181715;
-  --scenario-ink-secondary: #625f59;
-  --scenario-panel: #fbf8f1;
-  --scenario-panel-edge: rgb(0 0 0 / 10%);
-  --scenario-lift: 0 22px 45px rgb(0 0 0 / 0.16);
-}
-
-.dark {
-  color-scheme: dark;
-  --background: #050505;
-  --foreground: #f1ede4;
-  /* Night ramp: the same desk with the lamp off. Each paper step keeps
-     the light theme's ~1.2:1 tonal separation so panel-inside-panel
-     reading survives without shadows. */
-  --card: #221f1b;
-  --card-foreground: #f1ede4;
-  --popover: #2c2924;
-  --popover-foreground: #f1ede4;
-  --primary: #f1ede4;
-  --primary-foreground: #050505;
-  --secondary: #221f1b;
-  --secondary-foreground: #f1ede4;
-  --muted: #2c2924;
-  --muted-foreground: #aaa399;
-  --accent: #2c2924;
-  --accent-foreground: #f1ede4;
-  --destructive: #ff8f82;
-  --border: #4a453f;
-  --input: #7d766c;
-  --ring: #e74432;
-  --radius: 0.5rem;
-  --canvas: #050505;
-  --surface: #171512;
-  --surface-raised: #2c2924;
-  --surface-subtle: #12110f;
-  --ink-secondary: #aaa399;
-  --ink-tertiary: #978f85;
-  --hairline: #4a453f;
-  --provider: #84adff;
-  --provider-soft: #18213d;
-  --warning: #e3a75e;
-  --warning-soft: #3b2918;
-  --selection: #ffb0a5;
-  --selection-foreground: #171a18;
-  --signature: #e74432;
-  --stamp: #ff6a54;
-  /* The ink chip inverts to light paper here, so warning darkens while
-     the other accents keep their light-theme values. */
-  --on-ink-signature: #e74432;
-  --on-ink-provider: #4f70ee;
-  --on-ink-warning: #824c0b;
-  --on-ink-destructive: #c63f32;
-  --scrim: rgb(5 5 5 / 60%);
-  --cord: #d9d1c5;
-  --cord-socket: #2c2924;
-  --cord-handle: #f1ede4;
-  --cord-highlight: #27241f;
-  --cord-glow: rgb(255 187 75 / 7%);
-  /* Fixed-composition palette for the demo ticket: a safety-yellow admit
-     ticket that keeps its own contrast pair in both themes. */
-  --ticket: #f1d87a;
-  --ticket-ink: #17201c;
-  --ticket-paper: #edf3ef;
-  /* Scenario cards: printed panels on fixed pastel stocks; the ink pair
-     stays constant so the cards read the same in light and dark themes. */
-  --scenario-1: #f2c84b;
-  --scenario-2: #63d8c9;
-  --scenario-3: #aea6ff;
-  --scenario-4: #c9ff73;
-  --scenario-5: #d7a5aa;
-  --scenario-ink: #181715;
-  --scenario-ink-secondary: #625f59;
-  --scenario-panel: #fbf8f1;
-  --scenario-panel-edge: rgb(0 0 0 / 10%);
-  --scenario-lift: 0 22px 45px rgb(0 0 0 / 0.16);
+  --warning-soft: #fff4c2;
+  --success: #138a4d;
+  /* Darker ink variants for small text on tinted chip fills: the base
+     tokens are tuned for icons and large text and land under 4.5:1 on a
+     10% fill of themselves, so chips carry their own text pair. */
+  --success-strong: #0e6b3e;
+  --destructive-strong: #b13232;
+  --ring-strong: #00706b;
+  --provider-strong: #3b56c4;
+  --selection: #cde9e7;
+  --selection-foreground: #0d0d0f;
+  --scrim: rgb(13 13 15 / 40%);
+  /* Brand pops — CTAs and one signature moment only. The logo's tick is
+     the controller's proof mark: the one red, never restyled. */
+  --brand-red: #e74432;
+  --brand-yellow: #fee100;
+  --brand-primary: #ffbc00;
+  --brand-secondary: #4ecdc4;
+  --brand-black: #0d0d0f;
+  --motion-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-duration-fast: 160ms;
+  --motion-duration-base: 260ms;
+  --motion-duration-slow: 420ms;
 }
 
 @layer base {
@@ -258,20 +163,6 @@
     text-wrap: pretty;
   }
 
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation: none;
-    mix-blend-mode: normal;
-  }
-
-  ::view-transition-old(root) {
-    z-index: 1;
-  }
-
-  ::view-transition-new(root) {
-    z-index: 2;
-  }
-
   ::selection {
     background: var(--selection);
     color: var(--selection-foreground);
@@ -284,10 +175,21 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Skip-link and hash targets must land clear of the sticky header: it is
+   ~108px on phones (the nav wraps to a second row) and 64px from sm up. */
+  main[id="main-content"] {
+    scroll-margin-top: 6.75rem;
+  }
+
+  @media (min-width: 40rem) {
+    main[id="main-content"] {
+      scroll-margin-top: 4rem;
+    }
+  }
+
   .focus-ring {
-    /* The same ring the control primitives draw: 3px signature red at half
-       opacity, no offset — one focus language across links and controls. */
-    @apply outline-none focus-visible:ring-3 focus-visible:ring-ring/50;
+    /* One focus language: 2px of the quiet accent, no offset. */
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-ring;
   }
 
   /* Checkbox touch floor: 16px boxes starve touch aim, so coarse-pointer
@@ -332,94 +234,6 @@
       max(1.25rem, env(safe-area-inset-right));
   }
 
-  /* Fixed-overlay reservations. These must be declared AFTER the rails
-     above: the rails set padding-inline, and a same-specificity
-     Tailwind utility (pr-16, xl:pl-36) compiles earlier in the sheet,
-     so the rail would silently swallow the reservation and the fixed
-     element would collide with page content. */
-  .reserve-cord {
-    padding-inline-end: 4rem;
-  }
-
-  @media (min-width: 80rem) {
-    .reserve-section-rail {
-      padding-inline-start: 9rem;
-    }
-  }
-
-  .theme-pull-cord {
-    position: absolute;
-    z-index: 40;
-    inset-block-start: 0;
-    inset-inline-end: 0.25rem;
-    overflow: visible;
-    color: var(--cord);
-    pointer-events: none;
-    user-select: none;
-  }
-
-  .theme-pull-cord svg {
-    overflow: visible;
-    pointer-events: none;
-  }
-
-  .pull-cord-glow {
-    fill: var(--cord-glow);
-    filter: blur(9px);
-  }
-
-  .pull-cord-socket {
-    fill: var(--cord-socket);
-    stroke: var(--border);
-    stroke-width: 1;
-  }
-
-  .pull-cord-line {
-    stroke: var(--cord);
-    opacity: 0.72;
-  }
-
-  .pull-cord-bead {
-    fill: var(--cord-handle);
-    filter: drop-shadow(0 2px 5px rgb(0 0 0 / 18%));
-  }
-
-  .pull-cord-bead-highlight {
-    fill: var(--cord-highlight);
-    opacity: 0.74;
-  }
-
-  .pull-cord-control {
-    position: absolute;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    cursor: grab;
-    pointer-events: auto;
-    touch-action: none;
-  }
-
-  .pull-cord-control:active {
-    cursor: grabbing;
-  }
-
-  .pull-cord-control:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-    background: color-mix(in srgb, var(--ring) 10%, transparent);
-  }
-
-  .scenario-card {
-    transition: transform 150ms var(--ease-out-expo);
-  }
-
-  .scenario-card__panel {
-    transition: transform 180ms var(--ease-out-expo);
-  }
-
   /* Height-reveal for expandable regions: the row track carries the height,
      an overflow-hidden child clips it. Collapsed content is visibility-hidden
      so it stays out of the tab order and the accessibility tree. */
@@ -428,7 +242,7 @@
     grid-template-rows: 0fr;
     visibility: hidden;
     transition:
-      grid-template-rows 240ms var(--ease-out-expo),
+      grid-template-rows 240ms var(--motion-ease-out),
       visibility 0ms 240ms;
   }
 
@@ -436,7 +250,7 @@
     grid-template-rows: 1fr;
     visibility: visible;
     transition:
-      grid-template-rows 240ms var(--ease-out-expo),
+      grid-template-rows 240ms var(--motion-ease-out),
       visibility 0ms 0ms;
   }
 
@@ -457,53 +271,12 @@
     background: var(--primary);
     transform: scaleX(0);
     transform-origin: left center;
-    transition: transform 140ms var(--ease-out-expo);
+    transition: transform 140ms var(--motion-ease-out);
   }
 
   .loop-segment[data-filled="true"]::after {
     transform: scaleX(1);
-    transition: transform 300ms var(--ease-out-expo);
-  }
-
-  /* Ledger stamp for a terminal state: serif caps, slight rotation, ink
-     color. The status badge beside it carries the accessible label. */
-  .close-stamp {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.125rem 0.5rem 0.1875rem;
-    border: 1px solid currentColor;
-    border-radius: 2px;
-    font-family: var(--font-instrument-serif), Georgia, serif;
-    font-size: 0.8125rem;
-    line-height: 1.3;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    transform: rotate(var(--stamp-angle, -3deg));
-    user-select: none;
-  }
-
-  /* The accountant's double rule under a closed book's final totals. */
-  .ledger-close-rule {
-    position: relative;
-    border-top: 1px solid var(--foreground);
-  }
-
-  .ledger-close-rule::after {
-    content: "";
-    position: absolute;
-    inset-inline: 0;
-    top: 3px;
-    border-top: 1px solid var(--foreground);
-  }
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .scenario-card:hover {
-    transform: translate3d(0, -6px, 0) !important;
-  }
-
-  .scenario-card:hover .scenario-card__panel {
-    transform: translateY(-4px);
+    transition: transform 300ms var(--motion-ease-out);
   }
 }
 
@@ -531,7 +304,7 @@
 @keyframes capsule-pop {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.96);
+    transform: translateY(12px) scale(0.97);
   }
   to {
     opacity: 1;
@@ -539,17 +312,22 @@
   }
 }
 
-@keyframes stamp-press {
+/* Exit counterpart of capsule-pop: faster than the entrance. */
+@keyframes capsule-fade {
   from {
-    opacity: 0;
-    transform: rotate(var(--stamp-angle, -3deg)) scale(1.55);
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
   to {
-    opacity: 1;
-    transform: rotate(var(--stamp-angle, -3deg)) scale(1);
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
   }
 }
 
+/* Reduced-motion policy: functional transitions (hover, focus, popup,
+   reveal) are clamped to 120ms and keep their meaning; decorative
+   entrances and exits (capsule pop/fade, skeleton pulse) are disabled
+   outright via motion-reduce:animate-none at their call sites. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -562,6 +340,14 @@
 
   .reveal {
     transition-delay: 120ms;
+  }
+
+  /* Busy spinners are essential feedback, not decoration: the clamp above
+     would freeze them mid-rotation and read as "stuck" instead of
+     "working". They keep rotating, nothing else changes. */
+  .animate-spin {
+    animation-duration: 750ms !important;
+    animation-iteration-count: infinite !important;
   }
 }
 

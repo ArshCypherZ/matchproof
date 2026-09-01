@@ -152,17 +152,26 @@ export async function executeApprovedRecovery(
     };
   }
 
-  const outcome = await new RecoveryExecutor(store, merchant).execute(
-    decision,
-    {
+  let outcome: RecoveryOutcome;
+  try {
+    outcome = await new RecoveryExecutor(store, merchant).execute(decision, {
       tenantId,
       incidentId,
       paymentId: bundle.payment_id,
       orderId,
       beforeState: payment.state,
       targetState: "paid",
-    },
-  );
+    });
+  } catch (error) {
+    // The failed attempt is durable evidence; the incident stays pending so
+    // the operator can approve again once the cause is fixed.
+    await store.setProgress(incidentId, "execute", "failed", {
+      action: "approve",
+      reason: error instanceof Error ? error.message : String(error),
+      actor,
+    });
+    throw error;
+  }
   await store.audit("recovery_completed", outcome);
 
   const providerStatus =

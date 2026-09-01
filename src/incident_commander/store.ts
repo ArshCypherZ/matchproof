@@ -96,6 +96,11 @@ export class IncidentStore {
   ) {
     return this.repository.savePostRepairStateObservation(...args);
   }
+  resetIncidentExecution(
+    ...args: Parameters<IncidentRepository["resetIncidentExecution"]>
+  ) {
+    return this.repository.resetIncidentExecution(...args);
+  }
   postRepairStateObservation(
     ...args: Parameters<IncidentRepository["postRepairStateObservation"]>
   ) {
