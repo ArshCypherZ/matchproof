@@ -7,9 +7,10 @@ export const alt =
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-/* The Agreed Entry mark in fixed ink-on-paper palette (printed artifact):
-   two ledger rules that match, and the controller's red tick that proves it. */
-const markSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 144 462 232" width="462" height="232"><rect x="32" y="152" width="192" height="72" fill="#181715"/><rect x="32" y="296" width="192" height="72" fill="#181715"/><path d="M296 252 L352 328 L444 190" stroke="#e74432" stroke-width="68" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
+/* The mark in fixed ink-on-paper palette (printed artifact): the
+   accountant's double rule that closes a settled total, with the
+   controller's red proof tick between. */
+const markSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="232" height="232"><line x1="2.5" y1="4.5" x2="29.5" y2="4.5" stroke="#181715" stroke-width="3.4" stroke-linecap="round"/><line x1="2.5" y1="27.5" x2="29.5" y2="27.5" stroke="#181715" stroke-width="3.4" stroke-linecap="round"/><path d="M10 16.7 L14.8 21.5 L22.8 11.5" stroke="#e74432" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
 const markSrc = `data:image/svg+xml;base64,${Buffer.from(markSvg).toString("base64")}`;
 
 const fonts = Promise.all([
@@ -83,8 +84,8 @@ export default async function Image() {
         <img
           src={markSrc}
           alt=""
-          width={248}
-          height={124}
+          width={116}
+          height={116}
           style={{ marginTop: 36 }}
         />
 

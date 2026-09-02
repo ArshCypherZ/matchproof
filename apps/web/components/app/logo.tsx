@@ -1,31 +1,36 @@
 export function Logo({ className }: { className?: string }) {
   return (
     <svg
-      viewBox="24 144 462 232"
+      viewBox="0 0 32 32"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
       className={className}
     >
-      {/* The agreed entry: two ledger rules that match… */}
-      <rect
-        className="fill-foreground"
-        x="32"
-        y="152"
-        width="192"
-        height="72"
+      {/* The accountant's double rule that closes a settled total… */}
+      <line
+        x1="2.5"
+        y1="4.5"
+        x2="29.5"
+        y2="4.5"
+        className="stroke-foreground"
+        strokeWidth="3.4"
+        strokeLinecap="round"
       />
-      <rect
-        className="fill-foreground"
-        x="32"
-        y="296"
-        width="192"
-        height="72"
+      <line
+        x1="2.5"
+        y1="27.5"
+        x2="29.5"
+        y2="27.5"
+        className="stroke-foreground"
+        strokeWidth="3.4"
+        strokeLinecap="round"
       />
-      {/* …and the controller's tick that proves it. The one red node. */}
+      {/* …and the controller's tick between them: the proof that the
+          entry settled. The one red node. */}
       <path
         className="stroke-brand-red"
-        d="M296 252 L352 328 L444 190"
-        strokeWidth="68"
+        d="M10 16.7 L14.8 21.5 L22.8 11.5"
+        strokeWidth="4.2"
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
