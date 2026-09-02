@@ -132,11 +132,18 @@ type Chapter = {
   content: ReactNode;
 };
 
-export function JudgmentPanel({ incident }: { incident: Incident }) {
+export function JudgmentPanel({
+  incident,
+  repaired,
+}: {
+  incident: Incident;
+  // A reconciled record's mismatch no longer exists: the chapters read as
+  // history, not as a live claim on the current state.
+  repaired: boolean;
+}) {
   const [open, setOpen] = useState(
     () => new Set(["reconstruction", "hypothesis"]),
   );
-  const [spotlight, setSpotlight] = useState<string | null>(null);
   const hypothesis = incident.reconciliation.discrepancy
     ? (DISCREPANCY_SENTENCES[incident.reconciliation.discrepancy] ??
       `${sentenceCase(incident.reconciliation.discrepancy)}.`)
@@ -157,10 +164,19 @@ export function JudgmentPanel({ incident }: { incident: Incident }) {
     },
     {
       id: "hypothesis",
-      title: "What’s wrong",
+      // The mismatch is a live claim while the record is open, and history
+      // once the repair closed it — the sentence itself stays present tense
+      // (it is shared with the queue), so the title carries the tense.
+      title: repaired ? "What was wrong" : "What’s wrong",
       content: (
         <>
           <p className="max-w-prose text-sm leading-6">{hypothesis}</p>
+          {repaired ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Diagnosed before the repair; the verification card carries the
+              recorded outcome.
+            </p>
+          ) : null}
           {missing.length ? (
             <div className="mt-3">
               <p className="text-xs text-muted-foreground">
@@ -213,32 +229,25 @@ export function JudgmentPanel({ incident }: { incident: Incident }) {
   return (
     <Card aria-labelledby="judgment-heading">
       <CardHeader>
-        <h2 id="judgment-heading" className="text-lg font-semibold">
-          Review findings
-        </h2>
+        <div>
+          <h2 id="judgment-heading" className="text-lg font-semibold">
+            Review findings
+          </h2>
+          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+            What the evidence shows happened, and the mismatch diagnosed from
+            it.
+          </p>
+        </div>
       </CardHeader>
       <div className="divide-y divide-border px-5">
         {chapters.map((chapter) => {
           const expanded = open.has(chapter.id);
-          const dimmed = spotlight && spotlight !== chapter.id;
           const panelId = `judgment-${chapter.id}`;
+          // Chapters are read, not worked: no hover spotlight or dimming —
+          // pointer feedback would imply an interaction the panel doesn't
+          // have. The disclosure button is the only interactive affordance.
           return (
-            <article
-              key={chapter.id}
-              onPointerEnter={(event) => {
-                if (event.pointerType !== "touch") setSpotlight(chapter.id);
-              }}
-              onPointerLeave={(event) => {
-                if (event.pointerType !== "touch") setSpotlight(null);
-              }}
-              onFocusCapture={() => setSpotlight(chapter.id)}
-              onBlurCapture={() => setSpotlight(null)}
-              className={`transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] motion-reduce:transition-none ${
-                spotlight === chapter.id
-                  ? "bg-surface-subtle text-foreground"
-                  : `bg-transparent ${dimmed ? "text-ink-secondary" : "text-foreground"}`
-              }`}
-            >
+            <article key={chapter.id}>
               <h3>
                 <button
                   type="button"

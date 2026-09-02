@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LoaderCircle, ShieldAlert } from "lucide-react";
+import { Check, LoaderCircle, ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
@@ -79,22 +79,44 @@ export function IncidentActions({
   const dialog = useRef<HTMLDialogElement>(null);
   const escalateDialog = useRef<HTMLDialogElement>(null);
   const anchor = useRef<HTMLDivElement>(null);
+  const confirmation = useRef<HTMLDivElement>(null);
   const [showDock, setShowDock] = useState(false);
+  // The dock stays mounted while its exit animation runs, then unmounts.
+  const [dockMounted, setDockMounted] = useState(false);
   const [pending, setPending] = useState<"approve" | "escalate" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | null>(null);
+  // The most consequential click in the console must not end with a dialog
+  // closing and a quiet refresh: the approval names what changed.
+  const [approved, setApproved] = useState<{
+    orderId: string | null;
+    targetState: string | null;
+  } | null>(null);
 
   useEffect(() => {
     const element = anchor.current;
     if (!element) return;
     const observer = new IntersectionObserver(
-      ([entry]) => setShowDock(!entry.isIntersecting),
+      ([entry]) => {
+        const dock = !entry.isIntersecting;
+        setShowDock(dock);
+        // The dock stays mounted while its exit animation runs; mounting is
+        // decided here, unmounting when the fade ends (onAnimationEnd).
+        if (dock) setDockMounted(true);
+      },
       { threshold: 0 },
     );
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+
+  // The confirmation replaces the buttons that opened the dialog, so focus
+  // has nowhere to return when it closes — it lands here instead, and the
+  // change is announced rather than silent.
+  useEffect(() => {
+    if (approved) confirmation.current?.focus();
+  }, [approved]);
 
   const mutate = async (action: "approve" | "escalate") => {
     setPending(action);
@@ -111,8 +133,15 @@ export function IncidentActions({
         }),
       });
       if (!response.ok) throw new Error(await actionError(action, response));
-      if (action === "approve") dialog.current?.close();
-      else escalateDialog.current?.close();
+      if (action === "approve") {
+        dialog.current?.close();
+        setApproved({
+          orderId: targetOrderId,
+          targetState,
+        });
+      } else {
+        escalateDialog.current?.close();
+      }
       router.refresh();
     } catch (cause) {
       setError(
@@ -136,6 +165,42 @@ export function IncidentActions({
     setReasonError(null);
     void mutate("escalate");
   };
+
+  // The confirmation outlives the actions it replaced: after the refresh the
+  // record is terminal and offers no further actions, but what changed stays
+  // readable where the buttons were.
+  if (approved) {
+    return (
+      <div
+        ref={confirmation}
+        role="status"
+        tabIndex={-1}
+        className="focus-ring max-w-md rounded-xl bg-success/10 px-3.5 py-2.5"
+      >
+        <p className="flex items-start gap-2.5 text-left text-xs leading-5 text-success-strong">
+          <Check
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-success-strong"
+          />
+          <span>
+            {approved.orderId ? (
+              <>
+                Approved. Order{" "}
+                <span translate="no" className="font-data">
+                  {approved.orderId}
+                </span>{" "}
+                is moving to {approved.targetState ?? "its target state"}.
+              </>
+            ) : (
+              <>Approved. The merchant order update is being applied.</>
+            )}{" "}
+            Fresh Razorpay and merchant checks are being observed; the
+            verification card will show their result.
+          </span>
+        </p>
+      </div>
+    );
+  }
 
   // A terminal record offers no actions: re-escalating a finished exception
   // or approving a closed one is never the operator's next move.
@@ -181,14 +246,37 @@ export function IncidentActions({
 
   return (
     <>
-      <div ref={anchor} className="flex flex-wrap justify-end gap-2">
+      {/* While the dock repeats these controls at the bottom of the viewport,
+          the anchored set keeps its geometry for the observer but leaves the
+          tab order and the accessibility tree — keyboard users must not tab
+          into an invisible duplicate. */}
+      <div
+        ref={anchor}
+        aria-hidden={showDock || undefined}
+        inert={showDock}
+        className="flex flex-wrap justify-end gap-2"
+      >
         {actions()}
       </div>
-      {showDock ? (
+      {/* Stays mounted across the exit so the fade has its counterpart to
+          the pop; the fade unmounts it when it ends. */}
+      {dockMounted ? (
         <div
           role="region"
           aria-label="Exception actions"
-          className="animate-capsule-pop fixed bottom-4 left-2 right-2 z-40 flex flex-wrap items-center justify-end gap-1.5 rounded-xl bg-surface-raised px-2 py-2 shadow-xl motion-reduce:animate-none [margin-bottom:max(1rem,env(safe-area-inset-bottom))] sm:left-auto sm:px-3"
+          inert={!showDock}
+          onAnimationEnd={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (!showDock && event.animationName === "capsule-fade")
+              setDockMounted(false);
+          }}
+          className={`fixed bottom-4 left-2 right-2 z-40 flex flex-wrap items-center justify-end gap-1.5 rounded-xl bg-surface-raised px-2 py-2 shadow-xl [margin-bottom:max(1rem,env(safe-area-inset-bottom))] sm:left-auto sm:px-3 ${
+            showDock
+              ? "animate-capsule-pop motion-reduce:animate-none"
+              : // Reduced motion never fires animationend, so the exit hides
+                // outright instead of waiting for a fade that will not run.
+                "animate-capsule-fade motion-reduce:hidden"
+          }`}
         >
           {actions(true)}
         </div>

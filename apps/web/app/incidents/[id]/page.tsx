@@ -1,13 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
+import { cache } from "react";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
-import {
-  requestContext,
-  listIncidentDtos,
-  getIncidentDto,
-} from "@/lib/incidents";
+import { requestContext, listIncidentDtos } from "@/lib/incidents";
 import { filterIncidentViews } from "@/lib/incident-query";
 import {
   CLASS_FACETS,
@@ -17,6 +14,7 @@ import {
   normalizeFacet,
 } from "@/components/incidents/queue-facets";
 import { IncidentPager } from "@/components/incidents/incident-pager";
+import { RecordFocus } from "@/components/incidents/record-focus";
 import { SourceBadge } from "@/components/shared/source-badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { formatDate, formatMoney } from "@/components/shared/format";
@@ -37,6 +35,34 @@ function classLabel(value: string) {
   return CLASS_LABELS[value] ?? value.replaceAll("_", " ");
 }
 
+// One queue read per request: the title and the page share this cached list,
+// so generating the tab title does not fetch every record a second time. The
+// page needs the list anyway — the pager steps through it.
+const loadQueue = cache((tenantId: string) => listIncidentDtos(tenantId));
+
+// The verification card answers "did this record leave the loop proven?" The
+// durable answer is the recorded post-repair state status, and the pipeline
+// writes it on whichever step carried the closing observation — usually
+// verify, but a webhook-driven record can carry it on observe or close
+// instead. All three are read, in pipeline order, so a verified record never
+// shows "not observed" because its result rode a different step.
+function recordedPostRepairStatus(
+  progress: { step: string; status: string; details?: unknown }[],
+): string | undefined {
+  for (const step of ["verify", "observe", "close"]) {
+    const row = progress.find(
+      (item) => item.step === step && item.status === "completed",
+    );
+    const details =
+      row && typeof row.details === "object" && row.details
+        ? (row.details as { post_repair_state_status?: unknown })
+        : null;
+    const status = details?.post_repair_state_status;
+    if (typeof status === "string") return status;
+  }
+  return undefined;
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -44,10 +70,12 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const { tenantId } = requestContext(await headers());
-  const incident = await getIncidentDto(tenantId, id);
-  // Called here — before the streaming shell flushes — so an unknown id
-  // answers with a real 404 instead of a 200 that streams the not-found UI.
-  if (!incident) notFound();
+  const incident = (await loadQueue(tenantId)).find(
+    (item) => item.incident_id === id,
+  );
+  // An unknown id still gets a titled tab: the page render below answers
+  // with this segment's own not-found, and the tab names what it shows.
+  if (!incident) return { title: "Exception not found" };
   // The tab title leads with the class label — the operator works several
   // exceptions at once — and keeps the id secondary, as everywhere else.
   return { title: `Exception ${classLabel(incident.incident_class)} · ${id}` };
@@ -76,10 +104,14 @@ export default async function IncidentPage({
   const { tenantId } = requestContext(headerList);
 
   // The pager steps through the queue in the same order the operator saw it:
-  // same source list, same facets. The record itself comes from that list so
-  // the workbench does not fetch the incident a second time.
-  const all = await listIncidentDtos(tenantId);
+  // same source list, same facets. The list is the cached read the title
+  // already used, so the workbench does not fetch the queue a second time.
+  const all = await loadQueue(tenantId);
   const incident = all.find((item) => item.incident_id === id);
+  // Thrown from the render path, inside this segment's loading boundary, so
+  // the segment's own not-found renders — its copy and its rail width —
+  // instead of the app-wide record page. The streamed response answers 200
+  // with noindex; the API route keeps the hard 404 for programs.
   if (!incident) notFound();
 
   const facetParams = new URLSearchParams();
@@ -95,13 +127,21 @@ export default async function IncidentPage({
   const currentIndex = workingSet.findIndex((item) => item.incident_id === id);
   const pagerQuery = facetQuery(facetParams);
   const backHref = `/incidents${pagerQuery}`;
+  // The operator's own action can drop this record out of the filtered view
+  // that brought them here — approve under a "pending" facet and the record
+  // is no longer pending. The pager must not vanish at that exact moment:
+  // when the facet no longer admits this record, it steps through the
+  // unfiltered queue, so the serial loop survives the status change the
+  // operator just caused.
+  const stepSet = currentIndex >= 0 ? workingSet : all;
+  const stepIndex = stepSet.findIndex((item) => item.incident_id === id);
   const previousHref =
-    currentIndex > 0
-      ? `/incidents/${workingSet[currentIndex - 1]!.incident_id}${pagerQuery}`
+    stepIndex > 0
+      ? `/incidents/${stepSet[stepIndex - 1]!.incident_id}${pagerQuery}`
       : null;
   const nextHref =
-    currentIndex >= 0 && currentIndex < workingSet.length - 1
-      ? `/incidents/${workingSet[currentIndex + 1]!.incident_id}${pagerQuery}`
+    stepIndex >= 0 && stepIndex < stepSet.length - 1
+      ? `/incidents/${stepSet[stepIndex + 1]!.incident_id}${pagerQuery}`
       : null;
 
   const terminal =
@@ -110,22 +150,14 @@ export default async function IncidentPage({
     incident.reconciliation.resolution === "reconcile_internal_state" &&
     incident.status === "pending";
   // The verification card answers one question: did this record leave the
-  // loop proven? The verify step's recorded outcome is the durable answer.
-  // The bundle's own invariants describe the state BEFORE any repair, so
-  // they must not answer it — a repaired record still shows its pre-repair
-  // mismatch in evidence.
-  const verifyRow = incident.progress.find(
-    (row) => row.step === "verify" && row.status === "completed",
-  );
-  const verifyDetails =
-    verifyRow && typeof verifyRow.details === "object" && verifyRow.details
-      ? (verifyRow.details as { post_repair_state_status?: unknown })
-          .post_repair_state_status
-      : undefined;
+  // loop proven? The recorded post-repair status is the durable answer — from
+  // whichever closing step carries it. The bundle's own invariants describe
+  // the state BEFORE any repair, so they must not answer it — a repaired
+  // record still shows its pre-repair mismatch in evidence.
   const verification =
     incident.status === "escalated"
       ? ("escalated" as const)
-      : verifyDetails === "verified"
+      : recordedPostRepairStatus(incident.progress) === "verified"
         ? ("verified" as const)
         : incident.status === "reconciled"
           ? ("closed" as const)
@@ -150,20 +182,27 @@ export default async function IncidentPage({
       : null;
   return (
     <main id="main-content" className="workspace-rail py-10 sm:py-14">
+      <RecordFocus />
       <div className="border-b border-border pb-8 sm:flex sm:items-end sm:justify-between sm:gap-8">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link
-              href={backHref}
-              className="focus-ring inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:px-1.5"
-            >
-              <ArrowLeft aria-hidden="true" className="size-3.5" />
-              Exceptions
-            </Link>
-            <IncidentPager previousHref={previousHref} nextHref={nextHref} />
-          </div>
+          {/* The header answers "what is this record"; the way to the next
+              one belongs at the end of the work, not above the work. */}
+          <Link
+            href={backHref}
+            className="focus-ring inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:px-1.5"
+          >
+            <ArrowLeft aria-hidden="true" className="size-3.5" />
+            Exceptions
+          </Link>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <h1 className="font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+            {/* Focus lands here after a pager step (see RecordFocus): the
+                whole record changed under the operator, and the heading is
+                what a screen reader must announce next. */}
+            <h1
+              id="record-heading"
+              tabIndex={-1}
+              className="focus-ring rounded-md font-display text-3xl font-semibold tracking-tight text-balance scroll-mt-24 sm:text-4xl"
+            >
               {classLabel(incident.incident_class)}
             </h1>
             <StatusBadge status={incident.status} />
@@ -224,7 +263,12 @@ export default async function IncidentPage({
       </div>
       <WorkbenchSections
         evidence={<EvidenceTimeline evidence={incident.evidence} />}
-        judgment={<JudgmentPanel incident={incident} />}
+        judgment={
+          <JudgmentPanel
+            incident={incident}
+            repaired={incident.status === "reconciled"}
+          />
+        }
         control={
           <div className="grid gap-8">
             <PolicyDecision
@@ -240,6 +284,10 @@ export default async function IncidentPage({
           </div>
         }
       />
+      {/* The queue stepper lands after the workbench: it is the way to the
+          next record, and the operator reaches for it once this one is
+          read. It draws its own hairline divider and stays quiet. */}
+      <IncidentPager previousHref={previousHref} nextHref={nextHref} />
     </main>
   );
 }

@@ -102,11 +102,11 @@ export function WorkbenchSections({
           role="tabpanel" — at md and up the referenced tabs are display-none
           and the panels would advertise tab semantics with no tablist. Each
           panel's section heading is its accessible name at every size. */}
-      {/* Major sections (header, rail, workbench) hold one 32px cadence at md
-          and up; below md the tab strip attaches to the panels it controls,
-          so the strip separates from the rail by 24px and the panels sit
-          20px under their tabs. */}
-      <div className="mt-5 grid gap-8 md:mt-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+      {/* One card cadence everywhere: the three cards separate by the same
+          32px gutter in both axes (the columns' own gap), so the grid reads
+          as one consistent frame whether a section is dense or nearly empty
+          — no card changes anatomy because its data is short or missing. */}
+      <div className="mt-5 grid min-w-0 gap-8 md:mt-8 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
         <div
           id="workbench-evidence"
           className={`${active === "evidence" ? "block" : "hidden"} min-w-0 scroll-mt-24 md:block`}
@@ -114,7 +114,7 @@ export function WorkbenchSections({
           {evidence}
         </div>
         <div
-          className={`${active === "evidence" ? "hidden" : "block"} min-w-0 md:block`}
+          className={`${active === "evidence" ? "hidden" : "grid"} min-w-0 gap-8 md:grid`}
         >
           <div
             id="workbench-judgment"
@@ -124,7 +124,7 @@ export function WorkbenchSections({
           </div>
           <div
             id="workbench-control"
-            className={`${active === "control" ? "block" : "hidden"} md:mt-8 md:block md:border-t md:border-border md:pt-8`}
+            className={`${active === "control" ? "block" : "hidden"} scroll-mt-24 md:block`}
           >
             {control}
           </div>

@@ -1,8 +1,4 @@
-"use client";
-
-import { useState } from "react";
-import { Check, Clock3, Copy, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Check, Clock3, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader } from "@/components/ui/card";
 import { formatMoney } from "@/components/shared/format";
@@ -107,18 +103,20 @@ export function PostRepairStateComparison({
   } | null;
   verification: Verification;
 }) {
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
   // The merchant observations come from what the record actually holds, never
   // from the repair plan — a blocked or finished record has no target order,
   // but its observations still name what was seen. Once the fresh check
   // verified, the durable payment record carries the aligned state.
+  // A malformed timestamp must not decide which observation is latest: a NaN
+  // comparator leaves the sort order undefined, and a badly dated fact could
+  // pose as the freshest observation. It sorts as the oldest instead.
+  const stamp = (value: string) => {
+    const time = Date.parse(value);
+    return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+  };
   const latestOrder = evidence
     .filter((item) => item.kind === "merchant_order_state")
-    .sort(
-      (left, right) =>
-        Date.parse(left.occurred_at) - Date.parse(right.occurred_at),
-    )
+    .sort((left, right) => stamp(left.occurred_at) - stamp(right.occurred_at))
     .at(-1);
   const latestOrderPayload = (latestOrder?.payload ?? {}) as {
     amount_minor?: number;
@@ -171,21 +169,6 @@ export function PostRepairStateComparison({
         ),
     },
   ];
-  const copyProviderObservation = async () => {
-    try {
-      await navigator.clipboard.writeText(
-        rows.map((row) => `${row.label}: ${row.provider}`).join("\n"),
-      );
-      setCopied(true);
-      // Clear so the live region announces again on a second copy.
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard access can be blocked; say so instead of failing silently —
-      // the observations stay readable in the table to copy by hand.
-      setCopyFailed(true);
-      window.setTimeout(() => setCopyFailed(false), 2000);
-    }
-  };
   return (
     <Card aria-labelledby="verification-heading">
       <CardHeader className="flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -197,32 +180,17 @@ export function PostRepairStateComparison({
             {OUTCOME_COPY[verification].subtitle}
           </p>
         </div>
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <Badge
-            variant={verified ? "success" : "caution"}
-            className="shrink-0"
-          >
-            {verified ? (
-              <Check aria-hidden="true" />
-            ) : (
-              <Clock3 aria-hidden="true" />
-            )}
-            {OUTCOME_COPY[verification].badge}
-          </Badge>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={copyProviderObservation}
-            aria-label="Copy Razorpay observations"
-            title="Copy Razorpay observations"
-          >
-            {copied ? (
-              <Check aria-hidden="true" />
-            ) : (
-              <Copy aria-hidden="true" />
-            )}
-          </Button>
-        </div>
+        {/* The observations live in the table below, in selectable text —
+            no copy control. A button that duplicates what selection already
+            does adds chrome, not capability. */}
+        <Badge variant={verified ? "success" : "caution"} className="shrink-0">
+          {verified ? (
+            <Check aria-hidden="true" />
+          ) : (
+            <Clock3 aria-hidden="true" />
+          )}
+          {OUTCOME_COPY[verification].badge}
+        </Badge>
       </CardHeader>
       <div className="px-5 py-2">
         {/* The table owns its scroll: observations are mono figures that
@@ -307,13 +275,6 @@ export function PostRepairStateComparison({
           </p>
         </div>
       ) : null}
-      <span className="sr-only" aria-live="polite">
-        {copied
-          ? "Razorpay observations copied"
-          : copyFailed
-            ? "Copying failed. Select the observations in the table to copy them by hand."
-            : ""}
-      </span>
     </Card>
   );
 }

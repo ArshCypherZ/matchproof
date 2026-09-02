@@ -12,6 +12,30 @@ export function focusQueueSearch() {
   searchField?.focus();
 }
 
+// A pager step to another record must carry focus to the new record's
+// heading (see RecordFocus). router.push cannot pass state across the
+// navigation, so the pager marks the step in sessionStorage and the new
+// record consumes the mark on mount.
+const RECORD_FOCUS_KEY = "matchproof:record-focus";
+
+export function markRecordFocusStep() {
+  try {
+    sessionStorage.setItem(RECORD_FOCUS_KEY, "1");
+  } catch {
+    // Storage can be unavailable (private mode); the step just lands unfocused.
+  }
+}
+
+export function consumeRecordFocusStep(): boolean {
+  try {
+    if (sessionStorage.getItem(RECORD_FOCUS_KEY) !== "1") return false;
+    sessionStorage.removeItem(RECORD_FOCUS_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Queue shortcuts are for reading and row movement, not typing or picking.
 // They stay quiet while the operator is in a text field, a menu item, or an
 // open dialog, and while any modifier key is held.

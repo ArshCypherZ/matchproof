@@ -40,19 +40,27 @@ export function PolicyDecision({
   const variant = allowed ? "success" : noAction ? "neutral" : "danger";
   return (
     <Card aria-labelledby="policy-heading">
-      <CardHeader className="flex-wrap items-start justify-between gap-3">
-        <h2 id="policy-heading" className="text-lg font-semibold">
-          Approval decision
-        </h2>
+      <CardHeader className="flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 id="policy-heading" className="text-lg font-semibold">
+            Approval decision
+          </h2>
+          <p className="mt-1 max-w-prose text-xs text-muted-foreground">
+            Whether policy authorizes a merchant-side repair.
+          </p>
+        </div>
         <Badge variant={variant} className="shrink-0">
           <Icon aria-hidden="true" />
           {title}
         </Badge>
       </CardHeader>
-      <div
-        className={`px-5 py-4 ${allowed || noAction ? "bg-surface-subtle" : "bg-warning-soft"}`}
-      >
-        <p className="max-w-prose break-words text-sm leading-6 text-muted-foreground">
+      {/* The decision sentence sits on the card's own surface like every
+          other card body — no tonal band. The badge above carries the
+          state (success / neutral / danger, each with its own icon); a
+          filled band here only raised "why is this row a different
+          color?" without adding meaning. */}
+      <div className="px-5 py-4">
+        <p className="max-w-prose break-words text-sm leading-6">
           {allowed
             ? `Reconcile merchant order ${reconciliation.target_order_id} to ${reconciliation.target_state}.`
             : noAction

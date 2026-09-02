@@ -16,18 +16,20 @@ function constantTimeEqual(left: string, right: string) {
 // The existence check has to run here, before anything streams: an unknown
 // record is rewritten to a path no route can match (a leading underscore is a
 // private folder), which the router answers with a real 404.
-async function recordIsUnknown(request: NextRequest) {
+async function unknownRecordSection(
+  request: NextRequest,
+): Promise<"incidents" | "batches" | null> {
   const match = /^\/(incidents|batches)\/([^/]+)$/.exec(
     request.nextUrl.pathname,
   );
-  if (!match) return false;
+  if (!match) return null;
   const [, section, id] = match;
   const { tenantId } = requestContext(request);
   const record =
     section === "incidents"
       ? await getIncidentDto(tenantId, id)
       : await getBatchDto(tenantId, id);
-  return !record;
+  return record ? null : (section as "incidents" | "batches");
 }
 
 export async function proxy(request: NextRequest) {
@@ -43,7 +45,16 @@ export async function proxy(request: NextRequest) {
     )
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  if (await recordIsUnknown(request))
+  const section = await unknownRecordSection(request);
+  if (section === "incidents")
+    // A dedicated segment, not the unmatched path: the exceptions' own
+    // "Exception not found" copy in the workspace rail (the app-wide record
+    // page is the wrong words for a bad exception id). Trade-off: dev
+    // responses stream, so this answers HTTP 200 with a noindex render
+    // rather than the hard 404 the unmatched batch path returns — the page
+    // component's own comment records the same.
+    return NextResponse.rewrite(new URL("/incident-not-found", request.url));
+  if (section === "batches")
     return NextResponse.rewrite(new URL("/_record-not-found", request.url));
   return NextResponse.next();
 }

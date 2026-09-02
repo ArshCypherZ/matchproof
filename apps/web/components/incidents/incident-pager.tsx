@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { shortcutsInert } from "./queue-shortcuts";
+import { shortcutsInert, markRecordFocusStep } from "./queue-shortcuts";
 
 // The operator's serial loop: work a record, then step to the next one in
-// the queue with one key. The pager itself stays a hairline affordance — the
-// workbench carries enough visual weight already.
+// the queue with one key. The pager sits at the end of the workbench —
+// where the operator is when the record is done — as a quiet full-width
+// row over a hairline divider: Previous at one edge, Next at the other,
+// matching the reading direction. The workbench above carries the visual
+// weight; the pager is only the way out.
 export function IncidentPager({
   previousHref,
   nextHref,
@@ -28,6 +31,9 @@ export function IncidentPager({
       const href = forward ? nextHref : previousHref;
       if (!href) return;
       event.preventDefault();
+      // The step must carry focus to the new record's heading, not strand it
+      // on the keyboard that just left the page.
+      markRecordFocusStep();
       router.push(href);
     };
     document.addEventListener("keydown", onKeyDown);
@@ -39,11 +45,12 @@ export function IncidentPager({
   return (
     <nav
       aria-label="Adjacent exceptions in the queue"
-      className="flex shrink-0 items-center text-xs text-muted-foreground"
+      className="mt-10 flex items-center justify-between gap-4 border-t border-border pt-5 text-xs text-muted-foreground sm:pt-6"
     >
       {previousHref ? (
         <Link
           href={previousHref}
+          onClick={markRecordFocusStep}
           className="focus-ring inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center"
         >
           <ArrowLeft aria-hidden="true" className="size-3" />
@@ -58,10 +65,22 @@ export function IncidentPager({
           Previous
         </span>
       )}
-      <span aria-hidden="true" className="mx-1 h-3 w-px bg-border" />
+      {/* The serial loop is a keyboard flow; teach it the way the queue
+          teaches its own, in the same kbd idiom. Hidden where a keyboard is
+          not the way in. */}
+      <p className="hidden text-xs text-muted-foreground md:block">
+        <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
+          p
+        </kbd>{" "}
+        <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
+          n
+        </kbd>{" "}
+        <span>step through exceptions</span>
+      </p>
       {nextHref ? (
         <Link
           href={nextHref}
+          onClick={markRecordFocusStep}
           className="focus-ring inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] hover:text-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:justify-center"
         >
           Next

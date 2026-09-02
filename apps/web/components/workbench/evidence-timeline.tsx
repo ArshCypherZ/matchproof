@@ -90,7 +90,11 @@ export function EvidenceTimeline({ evidence }: { evidence: Evidence[] }) {
   );
   return (
     <Card aria-labelledby="evidence-heading">
-      <CardHeader className="justify-between">
+      {/* The shared card anatomy: heading + subtitle left, controls right,
+          stacking under sm — same header shape as the findings, decision,
+          and verification cards so the frame stays symmetric whether a
+          section is dense or near-empty. */}
+      <CardHeader className="flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 id="evidence-heading" className="text-lg font-semibold">
             Evidence
@@ -102,6 +106,7 @@ export function EvidenceTimeline({ evidence }: { evidence: Evidence[] }) {
         <Button
           variant="ghost"
           size="sm"
+          className="self-end sm:self-auto"
           onClick={() => setReceivedOrder((value) => !value)}
         >
           {receivedOrder ? "Sort by event time" : "Sort by arrival time"}
