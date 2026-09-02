@@ -78,7 +78,7 @@ export default async function Image() {
             whiteSpace: "nowrap",
           }}
         >
-          RAZORPAY BUILATHON · AI FINANCE CONTROLLER
+          RAZORPAY BUILDATHON · AI FINANCE CONTROLLER
         </div>
 
         <img
