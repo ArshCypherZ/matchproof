@@ -8,6 +8,12 @@ import {
 const SUMMARY_TTL_MS = 30_000;
 const SUMMARY_TIMEOUT_MS = 2_500;
 const DISCONNECTED_TTL_MS = 5_000;
+/* A transient provider blip (one dropped request, a slow cold response) must
+   not flip the band to "unavailable" while a fresh-enough read exists: the
+   last connected summary keeps serving for up to this long as refreshes
+   retry. Past it, the honest unavailable state returns — the band must not
+   present hours-old records as current activity. */
+const STALE_CONNECTED_TTL_MS = 180_000;
 
 type RazorpayTestModeSummary = Awaited<ReturnType<typeof loadSummary>>;
 
@@ -22,10 +28,21 @@ const disconnectedSummary = {
 
 let summaryCache:
   { at: number; ttl: number; value: RazorpayTestModeSummary } | undefined;
+let lastConnected:
+  | { at: number; value: Extract<RazorpayTestModeSummary, { connected: true }> }
+  | undefined;
+let inFlight: Promise<RazorpayTestModeSummary> | undefined;
 
 async function loadSummary() {
   try {
-    const collection = await listTestModePayments(25);
+    // One retry: a single dropped request is a blip, not an outage, and the
+    // list call is cheap. A second failure falls through to disconnected.
+    let collection;
+    try {
+      collection = await listTestModePayments(25);
+    } catch {
+      collection = await listTestModePayments(25);
+    }
     const tagged = collection.items.filter(
       (payment) => payment.notes?.source === "Razorpay Test mode",
     );
@@ -34,9 +51,17 @@ async function loadSummary() {
       (payment) => payment.status === "captured" && payment.captured,
     );
     const failed = payments.filter((payment) => payment.status === "failed");
-    const order = captured?.order_id
-      ? await fetchTestModeOrderStatus(captured.order_id)
-      : null;
+    // The order fetch is secondary context beside the payment list that
+    // already succeeded: its failure must not read as the provider being
+    // unavailable, so it degrades to "no order observed" instead.
+    let order = null;
+    if (captured?.order_id) {
+      try {
+        order = await fetchTestModeOrderStatus(captured.order_id);
+      } catch {
+        order = null;
+      }
+    }
 
     return {
       connected: true as const,
@@ -60,22 +85,55 @@ async function loadSummary() {
   }
 }
 
+function startRefresh() {
+  // Single flight: concurrent renders share one provider call instead of
+  // stampeding the API behind one evidence band.
+  inFlight = loadSummary()
+    .then((value) => {
+      // Late success is still evidence: a response slower than the render
+      // bound lands in the cache for the next render instead of being
+      // thrown away — the "sometimes unavailable" flicker.
+      const at = Date.now();
+      summaryCache = {
+        at,
+        ttl: value.connected ? SUMMARY_TTL_MS : DISCONNECTED_TTL_MS,
+        value,
+      };
+      if (value.connected) lastConnected = { at, value };
+      return value;
+    })
+    .finally(() => {
+      inFlight = undefined;
+    });
+  return inFlight;
+}
+
 export async function getRazorpayTestModeSummary() {
   const now = Date.now();
-  if (summaryCache && now - summaryCache.at < summaryCache.ttl)
-    return summaryCache.value;
+  if (summaryCache && now - summaryCache.at < summaryCache.ttl) {
+    // A cached "unavailable" never outranks a fresh-enough connected read:
+    // the blip that produced it should not erase the provider activity the
+    // operator already saw on the last render.
+    if (
+      summaryCache.value.connected ||
+      !lastConnected ||
+      now - lastConnected.at >= STALE_CONNECTED_TTL_MS
+    )
+      return summaryCache.value;
+    return lastConnected.value;
+  }
   // The Razorpay SDK has no request timeout; without this bound a slow
   // provider response would stall every page that renders the evidence band.
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<typeof disconnectedSummary>((resolve) => {
-    timer = setTimeout(() => resolve(disconnectedSummary), SUMMARY_TIMEOUT_MS);
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), SUMMARY_TIMEOUT_MS);
   });
-  const value = await Promise.race([loadSummary(), timeout]);
+  const value = await Promise.race([startRefresh(), timeout]);
   if (timer) clearTimeout(timer);
-  summaryCache = {
-    at: now,
-    ttl: value.connected ? SUMMARY_TTL_MS : DISCONNECTED_TTL_MS,
-    value,
-  };
-  return value;
+  if (value) return value;
+  // The refresh is still running past the render bound: keep the band on
+  // the last connected summary while it stays fresh enough, else say so.
+  if (lastConnected && now - lastConnected.at < STALE_CONNECTED_TTL_MS)
+    return lastConnected.value;
+  return disconnectedSummary;
 }
