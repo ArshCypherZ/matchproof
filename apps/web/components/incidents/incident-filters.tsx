@@ -18,7 +18,7 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 350;
 
-export function IncidentFilters() {
+export function IncidentFilters({ hasRows = true }: { hasRows?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -91,25 +91,29 @@ export function IncidentFilters() {
             placeholder="Search exception, payment, or order ID"
           />
         </div>
-        <p className="mt-1.5 hidden text-xs text-muted-foreground md:block">
-          <span className="inline-flex items-center gap-1.5">
+        {/* The j/k hint teaches row movement — with no rows on the page it
+            describes a shortcut with nothing to act on. */}
+        {hasRows ? (
+          <p className="mt-1.5 hidden text-xs text-muted-foreground md:block">
+            <span className="inline-flex items-center gap-1.5">
+              <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
+                j
+              </kbd>
+              <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
+                k
+              </kbd>
+            </span>{" "}
+            <span>move through rows</span> ·{" "}
             <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
-              j
-            </kbd>
+              /
+            </kbd>{" "}
+            <span>search</span> ·{" "}
             <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
-              k
-            </kbd>
-          </span>{" "}
-          <span>move</span> ·{" "}
-          <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
-            /
-          </kbd>{" "}
-          <span>search</span> ·{" "}
-          <kbd className="rounded-md bg-surface-subtle px-1 py-px font-data">
-            Enter
-          </kbd>{" "}
-          <span>open</span>
-        </p>
+              Enter
+            </kbd>{" "}
+            <span>open</span>
+          </p>
+        ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Select

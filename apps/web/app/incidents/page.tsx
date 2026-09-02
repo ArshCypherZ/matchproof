@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowRight } from "lucide-react";
 import { requestContext, listIncidentDtos } from "@/lib/incidents";
-import { filterIncidentViews } from "@/lib/incident-query";
+import { filterIncidentViews, sortIncidentViews } from "@/lib/incident-query";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -17,6 +17,7 @@ import { IncidentFilters } from "@/components/incidents/incident-filters";
 import { IncidentQueue } from "@/components/incidents/incident-table";
 import { IncidentSummaryLedger } from "@/components/incidents/incident-summary-ledger";
 import { LiveRefresh } from "@/components/shared/live-refresh";
+import { CountChip } from "@/components/shared/count-chip";
 import {
   ProviderEvidenceBand,
   ProviderEvidenceBandFallback,
@@ -85,11 +86,18 @@ export default async function IncidentsPage({
   }
 
   const all = await listIncidentDtos(tenantId);
-  const filtered = filterIncidentViews(all, {
-    status,
-    class: incidentClass,
-    q: search,
-  });
+  // The store guarantees no row order, so the queue states its own triage
+  // opinion instead: oldest exceptions first — nothing stale can sink below
+  // fresh arrivals, and a live refresh never reshuffles the rows. (In
+  // sortIncidentViews the age comparator is mirrored: "asc" is oldest-first.)
+  const filtered = sortIncidentViews(
+    filterIncidentViews(all, {
+      status,
+      class: incidentClass,
+      q: search,
+    }),
+    { sort: "age", direction: "asc" },
+  );
   // The ledger tallies are scoped to the same view the operator sees:
   // search and class filters apply, only the status facet is released so
   // each cell predicts what clicking it will show.
@@ -151,15 +159,14 @@ export default async function IncidentsPage({
             <h1 className="font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
               Exceptions
             </h1>
-            <div className="flex items-baseline gap-2 pb-0.5">
-              <span className="font-display text-xl font-medium leading-none tabular-nums">
-                {filtered.length}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {filtered.length === 1 ? "exception" : "exceptions"}
-                {status || incidentClass || search ? " shown" : ""}
-              </span>
-            </div>
+            {/* Boxed on a tonal surface (advise 1): a bare number beside the
+                h1 reads as a stray figure thrown in the open. The chip makes
+                count + noun one unit; its number shares this row's baseline
+                because the chip is itself an items-baseline flex line. */}
+            <CountChip value={filtered.length}>
+              {filtered.length === 1 ? "exception" : "exceptions"}
+              {status || incidentClass || search ? " shown" : ""}
+            </CountChip>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Payment and order mismatches that need attention.
@@ -188,7 +195,7 @@ export default async function IncidentsPage({
         />
       </section>
       <Card className="mt-6">
-        <IncidentFilters />
+        <IncidentFilters hasRows={pageItems.length > 0} />
         <IncidentQueue
           items={pageItems.map(toIncidentRow)}
           showSource={sources.size > 1}

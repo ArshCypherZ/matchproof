@@ -21,8 +21,8 @@ export default function Error({
     >
       <InlineNotice
         title="Exception queue unavailable"
-        body="The queue read failed. Existing actions were not changed."
-        actionLabel="Retry queue"
+        body="The exceptions could not be loaded. Nothing you have already done was changed."
+        actionLabel="Try again"
         onAction={retry}
       />
     </main>

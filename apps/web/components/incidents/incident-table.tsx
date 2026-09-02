@@ -304,7 +304,7 @@ function IncidentTable({
               Status
             </th>
             <th scope="col" className="px-3 py-3 font-medium">
-              Incident
+              Exception
             </th>
             <th scope="col" className="px-3 py-3 font-medium">
               Payment
@@ -334,9 +334,11 @@ function IncidentTable({
             >
               <td className="px-5 py-3">
                 <label className="check-hit">
+                  {/* The human label (the exception type) comes first, the
+                      raw id second — same order the row itself reads. */}
                   <input
                     type="checkbox"
-                    aria-label={`Select ${item.incident_id}`}
+                    aria-label={`Select ${classLabel(item.incident_class)} ${item.incident_id}`}
                     checked={selected.includes(item.incident_id)}
                     onChange={() => onToggle(item.incident_id)}
                     className="check-target"
@@ -428,9 +430,11 @@ function IncidentMobileList({
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <label className="check-hit">
+                {/* Same label anatomy as the desktop row: exception type
+                    first, raw id second. */}
                 <input
                   type="checkbox"
-                  aria-label={`Select ${item.incident_id}`}
+                  aria-label={`Select ${classLabel(item.incident_class)} ${item.incident_id}`}
                   checked={selected.includes(item.incident_id)}
                   onChange={() => onToggle(item.incident_id)}
                   className="check-target"
@@ -442,17 +446,21 @@ function IncidentMobileList({
               {formatAge(item.age_seconds)}
             </span>
           </div>
+          {/* The id sits inside the link, exactly as the desktop row's title
+              cell does: the card's title link then carries a full, unique
+              accessible name instead of repeating the bare class label on
+              every card. */}
           <Link
             href={`/incidents/${item.incident_id}${facetSearch}`}
-            className="focus-ring mt-3 block rounded-md pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center"
+            className="focus-ring mt-3 block rounded-md pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:flex-col pointer-coarse:items-start pointer-coarse:justify-center"
           >
             <p className="text-sm font-medium">
               {classLabel(item.incident_class)}
             </p>
+            <p className="mt-1 font-data text-xs text-muted-foreground [overflow-wrap:anywhere]">
+              {item.incident_id}
+            </p>
           </Link>
-          <p className="mt-1 font-data text-xs text-muted-foreground [overflow-wrap:anywhere]">
-            {item.incident_id}
-          </p>
           <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-3 text-xs">
             <CopyId value={item.payment_id} />
             <span className="font-data">
@@ -465,7 +473,7 @@ function IncidentMobileList({
             </span>
             <Link
               href={`/incidents/${item.incident_id}${facetSearch}`}
-              aria-label={`Open ${item.incident_id}`}
+              aria-label={`Open ${classLabel(item.incident_class)} ${item.incident_id}`}
               className="focus-ring inline-flex items-center gap-1 rounded-md text-foreground underline-offset-4 hover:underline pointer-coarse:min-h-11 pointer-coarse:px-1"
             >
               Open <ChevronRight aria-hidden="true" className="size-3.5" />
