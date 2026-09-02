@@ -53,26 +53,42 @@ export function ScenarioGrid({
               every entry: the step is the grouping key, not per-row data. */}
           <h2
             id={`failure-step-${step}`}
-            // Same hash-target clearance main#main-content gets from the
-            // sticky header, so a jump to a step group lands clear of it.
-            className="scroll-mt-16 text-lg font-semibold"
+            // Hash-target clearance matches the sticky header's real height
+            // (6.75rem on phones where the nav wraps, 4rem from sm up), the
+            // same pair main#main-content gets in globals.css.
+            className="scroll-mt-27 text-lg font-semibold sm:scroll-mt-16"
           >
             {stepLabel(step)}
           </h2>
-          <dl className="mt-4 grid gap-x-16 gap-y-6 sm:grid-cols-2">
+          {/* Two columns only from lg: at sm the 4rem gutter leaves each
+              column ~35ch, under the 45ch reading floor for the outcome
+              sentences. One column below lg keeps every entry at the dd's
+              max-w-prose cap; from lg up each column holds ~60ch. */}
+          <dl className="mt-4 grid gap-x-16 gap-y-6 lg:grid-cols-2">
             {entries.map((scenario) => (
-              // The id is an invisible deep-link handle (e.g. an escalation
-              // reason can reference /failure-scenarios#reordered-webhook);
-              // no visible anchor affordance — the title is not a control.
+              // The id is a deep-link handle (e.g. an escalation reason can
+              // reference /failure-scenarios#reordered_webhook); tabIndex -1
+              // matches main#main-content so hash navigation moves keyboard
+              // focus onto the entry, not just the scroll position. No
+              // visible anchor affordance — the title is not a control.
               <div
                 key={scenario.id}
                 id={scenario.id}
-                className="min-w-0 scroll-mt-16"
+                tabIndex={-1}
+                className="min-w-0 scroll-mt-27 sm:scroll-mt-16"
               >
-                <dt className="text-balance text-sm font-medium">
+                {/* Title and outcome must not read as one voice (advise 22):
+                    the title is the operator's scan target — one step up
+                    (base, medium, full ink), the same voice sub-headings
+                    elsewhere in the console use — while the outcome sits one
+                    step down (sm, regular, muted). The step h2 above stays a
+                    step above both (lg, semibold), so the chain
+                    page h1 → step → title → outcome is legible by size,
+                    weight, and ink alone, no borders or accents needed. */}
+                <dt className="text-balance text-base font-medium">
                   {scenario.title}
                 </dt>
-                <dd className="mt-1 max-w-prose text-sm leading-6">
+                <dd className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">
                   {scenario.outcome}
                 </dd>
               </div>
