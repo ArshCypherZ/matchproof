@@ -91,8 +91,7 @@ function startRefresh() {
   inFlight = loadSummary()
     .then((value) => {
       // Late success is still evidence: a response slower than the render
-      // bound lands in the cache for the next render instead of being
-      // thrown away — the "sometimes unavailable" flicker.
+      // bound lands in the cache for the next render.
       const at = Date.now();
       summaryCache = {
         at,

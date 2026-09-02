@@ -77,7 +77,7 @@ export function ScenarioGrid({
                 tabIndex={-1}
                 className="min-w-0 scroll-mt-27 sm:scroll-mt-16"
               >
-                {/* Title and outcome must not read as one voice (advise 22):
+                {/* Title and outcome must not read as one voice:
                     the title is the operator's scan target — one step up
                     (base, medium, full ink), the same voice sub-headings
                     elsewhere in the console use — while the outcome sits one

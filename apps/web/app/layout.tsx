@@ -17,7 +17,13 @@ export const viewport: Viewport = {
   themeColor: "#f6f6f3",
 };
 
+/* og:* meta URLs resolve against this base; without it Next anchors them
+   to localhost. The deployed console is the default; SITE_URL overrides
+   it for other environments. */
+const siteUrl = process.env.SITE_URL ?? "https://matchproof.arshjaved.in";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
     default: "Matchproof",
     template: "%s | Matchproof",

@@ -1,4 +1,4 @@
-/* A fintech figure (advise 25): the whole-number part carries the
+/* A fintech figure: the whole-number part carries the
    magnitude, the fractional part renders smaller and quieter beside it —
    "99.6%" reads as 99 with a .6 tail, not one undifferentiated string.
    Splits a formatted figure at its decimal separator; anything without a

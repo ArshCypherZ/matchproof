@@ -32,7 +32,7 @@ export default async function MetricsPage() {
      aggregate, but the queue-state ledger also needs the ambiguous count,
      which TenantMetrics does not carry. Tallying the same DTO list the
      queue page reduces keeps this strip and the queue's own strip in
-     agreement (advise 2). */
+     agreement. */
   const [measured, incidents] = await Promise.all([
     liveTenantMetrics(tenantId),
     listIncidentDtos(tenantId),
@@ -84,7 +84,7 @@ export default async function MetricsPage() {
           makes the chapter break), h3 groups inside them sit mt-8, and each
           section leads with its headline KPI strip before its named groups —
           the same shape in both sections so live and offline read as peers
-          (advise 17). */}
+         . */}
       <section aria-labelledby="measured-heading" className="mt-10">
         {/* The heading carries the section; provenance rides its baseline
             as metadata, the same role the count plays next to the page
@@ -111,7 +111,7 @@ export default async function MetricsPage() {
           <>
             {/* The section's lead group: the live pipeline's headline
                 measurements in one bounded strip. "Duplicate actions
-                prevented" is the fifth cell, not a queue facet (advise 2):
+                prevented" is the fifth cell, not a queue facet:
                 it measures the live system, so it belongs beside the
                 outcome rates rather than among the state counts below. */}
             <div className="grid grid-cols-1 overflow-hidden rounded-xl bg-surface sm:grid-cols-2 lg:grid-cols-5">
@@ -162,7 +162,7 @@ export default async function MetricsPage() {
               />
             </div>
             {/* The queue-facet counts reuse the queue page's linked strip
-                (advise 2): the same geometry, click-to-filter navigation,
+               : the same geometry, click-to-filter navigation,
                 and pending spinner, so the pattern reads as one control
                 across pages. */}
             <section aria-labelledby="queue-state-heading" className="mt-8">

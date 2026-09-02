@@ -74,7 +74,7 @@ export function OutcomeDistribution({
       <h3 id="outcome-heading" className="text-base font-semibold">
         Outcome distribution
       </h3>
-      {/* Kept inside this section (advise 21 considered): the overlap is a
+      {/* Kept inside this section: the overlap is a
          property of these four category counts — the rates above are not
          category sums — so the caveat qualifies the distribution, not the
          KPI strips. */}

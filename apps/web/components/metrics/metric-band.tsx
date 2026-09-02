@@ -28,7 +28,7 @@ const toneWord = {
   destructive: "critical",
 } as const;
 
-/* A band is a cell in a KPI strip (advise 18): the parent grid owns the
+/* A band is a cell in a KPI strip: the parent grid owns the
    bg-surface container and the column ladder, and the hairline rules here
    divide siblings without stroking the card's edge. One ladder serves every
    strip on the page — one column below sm, two from sm, a single row at lg
@@ -46,7 +46,7 @@ export function MetricBand({
 }: {
   value: string;
   label: string;
-  /* Every band explains itself (advise 19) without a wall of note text:
+  /* Every band explains itself without a wall of note text:
      the explanation sits behind the info glyph beside the label as a real
      disclosure — focusable, expandable with keyboard, pointer, or touch —
      so the definition reaches every operator, not just hover. The hint
@@ -67,7 +67,7 @@ export function MetricBand({
           muted ? "text-muted-foreground" : ""
         }`}
       >
-        {/* Fintech figures split whole from fraction (advise 25): the
+        {/* Fintech figures split whole from fraction: the
             magnitude leads and the decimal tail renders smaller and
             quieter. Figures without a decimal tail — counts, durations,
             placeholders — render untouched. */}

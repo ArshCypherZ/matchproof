@@ -68,10 +68,10 @@ export function BenchmarkResults() {
         <h3 id="closure-heading" className="text-base font-semibold">
           Closure and safety
         </h3>
-        {/* The caveat rides above the KPIs (advise 21): it changes how
+        {/* The caveat rides above the KPIs: it changes how
            every number below reads — "verified" means checked-after-repair
            — so the operator meets the qualifier before the figures, not
-           after. Full width within its section (advise 20): it qualifies
+           after. Full width within its section: it qualifies
            the whole benchmark, so it spans the same measure as the strips.
            Ink is the warning hue, not gray: tinted surfaces never carry
            gray text. */}

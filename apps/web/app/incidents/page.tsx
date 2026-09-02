@@ -159,7 +159,7 @@ export default async function IncidentsPage({
             <h1 className="font-display text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
               Exceptions
             </h1>
-            {/* Boxed on a tonal surface (advise 1): a bare number beside the
+            {/* Boxed on a tonal surface: a bare number beside the
                 h1 reads as a stray figure thrown in the open. The chip makes
                 count + noun one unit; its number shares this row's baseline
                 because the chip is itself an items-baseline flex line. */}

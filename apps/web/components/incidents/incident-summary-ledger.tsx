@@ -13,7 +13,7 @@ const items = [
 
 /* Clicking a cell refilters the queue, and the queue page is dynamic: the
    navigation can take as long as the query. The clicked cell says so — a
-   small spinner beside its count until the route lands (advise 6). */
+   small spinner beside its count until the route lands. */
 function CellPending() {
   const { pending } = useLinkStatus();
   if (!pending) return null;
