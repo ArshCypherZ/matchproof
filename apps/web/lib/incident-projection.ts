@@ -35,6 +35,5 @@ export function toBatchIncidentRow(dto: IncidentDto): BatchIncident {
     incident_class: dto.incident_class,
     status: dto.status,
     current_step: dto.current_step,
-    source_kind: dto.source_kind,
   };
 }

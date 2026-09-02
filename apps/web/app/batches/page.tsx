@@ -9,7 +9,9 @@ import {
 } from "@/lib/incidents";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { CountChip } from "@/components/shared/count-chip";
 import { formatDate } from "@/components/shared/format";
+import { statusBucket } from "@/components/shared/status-bucket";
 import { LiveRefresh } from "@/components/shared/live-refresh";
 import { StartBatchButton } from "@/components/batches/start-batch-button";
 
@@ -17,15 +19,18 @@ export const metadata: Metadata = { title: "Batches" };
 
 export const dynamic = "force-dynamic";
 
-// A status band is a live state, not a brand mark. Tones match the queue's
-// StatusBadge exactly: pending and ambiguous both read as caution (awaiting
-// operator attention), escalated as destructive, reconciled as success.
-// Segments are sized by each status's share of the batch, so the read stays
-// honest at any batch size, and the legend beside the section heading plus
-// the aria-label spell out the exact counts beside the colors.
+// A status band is a live state, not a brand mark. Pending and ambiguous
+// ask for different responses, so they must not share a swatch: pending
+// reads as caution (awaiting the operator), ambiguous as the neutral
+// indeterminate ink — the system could not decide, which is information,
+// not a warning. Escalated is destructive, verified is success, the same
+// pairing the queue's StatusBadge variants draw. Segments are sized by
+// each status's share of the batch, so the read stays honest at any batch
+// size, and the legend beside the section heading, the aria-label, and
+// the row's title spell out the exact counts beside the colors.
 const SEGMENT_TONES = [
   ["pending", "Pending", "bg-warning"],
-  ["ambiguous", "Ambiguous", "bg-warning"],
+  ["ambiguous", "Ambiguous", "bg-ink-tertiary"],
   ["escalated", "Escalated", "bg-destructive"],
   ["reconciled", "Verified", "bg-success"],
 ] as const;
@@ -56,18 +61,22 @@ export default async function BatchesPage() {
             <h1 className="font-display text-3xl font-semibold tracking-tight sm:text-4xl">
               Batches
             </h1>
-            <div className="flex items-baseline gap-2 pb-0.5">
-              <span className="font-display text-xl font-medium leading-none tabular-nums">
-                {batches.length}
-              </span>
-              <span className="text-xs text-muted-foreground">{batchWord}</span>
-            </div>
+            {/* Baseline-aligned with the title so figure and heading read as
+                one row; boxed on a tonal surface so the count is a unit,
+                not a stray number floating beside the heading. */}
+            <CountChip value={batches.length}>{batchWord}</CountChip>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Start a batch from pending exceptions and track it to a close.
           </p>
         </div>
-        <div className="flex flex-col items-start gap-2">
+        {/* The action group lives in the header's right-end slot, so its
+            children right-align from sm up: buttons and the reason line
+            share the same right edge, reading as one block anchored to the
+            slot. Below sm the buttons go full width, so the column keeps
+            its start alignment — a right-aligned reason under full-width
+            buttons would float. */}
+        <div className="flex flex-col items-start gap-2 sm:items-end">
           <div className="flex flex-wrap items-center gap-2">
             <LiveRefresh endpoint="/api/batches/fingerprint" label="Batches" />
             <Button
@@ -113,15 +122,10 @@ export default async function BatchesPage() {
             {batches.map((batch) => {
               const counts = batch.incident_ids.reduce(
                 (result, incidentId) => {
-                  const status = incidentStatus.get(incidentId) ?? "pending";
-                  const key =
-                    status === "reconciled"
-                      ? "reconciled"
-                      : status === "escalated"
-                        ? "escalated"
-                        : status === "ambiguous"
-                          ? "ambiguous"
-                          : "pending";
+                  // The same bucketing the batch detail tallies through:
+                  // an unknown or missing status reads as pending, so the
+                  // two pages cannot disagree about the same batch.
+                  const key = statusBucket(incidentStatus.get(incidentId));
                   result[key] += 1;
                   return result;
                 },
@@ -152,6 +156,11 @@ export default async function BatchesPage() {
                 <Link
                   key={batch.batch_id}
                   href={`/batches/${batch.batch_id}`}
+                  /* The band's proportions reach sighted operators too, not
+                     only the aria-label: hovering the row speaks the same
+                     composition string. An empty roster has no composition
+                     to speak. */
+                  title={composition || undefined}
                   className="focus-ring touch-manipulation [contain-intrinsic-size:auto_4.5rem] [content-visibility:auto] flex flex-col gap-2 px-4 py-4 transition-colors duration-(--motion-duration-fast) ease-[var(--motion-ease-out)] hover:bg-surface-subtle active:bg-surface-subtle sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-5"
                 >
                   <div className="min-w-0">

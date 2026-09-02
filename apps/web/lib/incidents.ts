@@ -235,9 +235,14 @@ export async function getBatchDto(tenantId: string, batchId: string) {
     );
     const present: IncidentBundle[] = [];
     for (const bundle of bundles) if (bundle) present.push(bundle);
+    // Both count sources ride the DTO: `incident_ids` is the roster the
+    // batch accepted (the list counts it), `incidents` the rows still
+    // present to render. Consumers derive every count from `incident_ids`
+    // so the list and the detail cannot disagree about the same batch.
     return {
       batch_id: batchId,
       started_at: event.recorded_at,
+      incident_ids: incidentIds,
       incidents: await incidentDtosForBundles(store, present),
     };
   });

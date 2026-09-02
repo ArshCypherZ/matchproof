@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getBatchDto, requestContext } from "@/lib/incidents";
 import { toBatchIncidentRow } from "@/lib/incident-projection";
+import { formatDate } from "@/components/shared/format";
 import { BatchView } from "@/components/batches/batch-view";
 
 export async function generateMetadata({
@@ -34,7 +35,13 @@ export default async function BatchPage({
     <BatchView
       batchId={batch.batch_id}
       incidents={batch.incidents.map(toBatchIncidentRow)}
-      startedAt={batch.started_at}
+      // The recorded roster is the count of record: incidents that have
+      // since vanished from the store still count, exactly as the list
+      // counts them, so both pages answer the same number.
+      total={batch.incident_ids.length}
+      // Formatted here on the server — the shared formatter pins one zone,
+      // so the streamed HTML and any hydration pass agree on the clock.
+      startedLabel={formatDate(batch.started_at)}
     />
   );
 }
