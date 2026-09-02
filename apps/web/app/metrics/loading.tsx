@@ -12,7 +12,7 @@ export default function Loading() {
       className="workspace-rail py-10 sm:py-14"
     >
       <span role="status" className="sr-only">
-        Loading the page…
+        Loading metrics…
       </span>
       <div className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
@@ -30,11 +30,17 @@ export default function Loading() {
         <div className="mb-7">
           <Skeleton className="h-7 w-44 motion-reduce:animate-none" />
         </div>
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 8 }, (_, index) => (
-            <div key={index} className="py-3">
-              <Skeleton className="h-10 w-24 motion-reduce:animate-none" />
-              <Skeleton className="mt-2 h-4 w-32 motion-reduce:animate-none" />
+        {/* The live strip's exact geometry, not an approximation of it: one
+            surface card in the strip's own ladder (one column below sm, two
+            from sm, five at lg), cells at the band's real px-4 py-4, and
+            value/label bars at the real line heights (text-4xl/5xl leading,
+            then text-sm) — so the streamed band lands where the skeleton
+            stood, at any width. */}
+        <div className="grid grid-cols-1 overflow-hidden rounded-xl bg-surface sm:grid-cols-2 lg:grid-cols-5">
+          {Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className="px-4 py-4">
+              <Skeleton className="h-10 w-24 lg:h-12 motion-reduce:animate-none" />
+              <Skeleton className="mt-2 h-5 w-32 motion-reduce:animate-none" />
             </div>
           ))}
         </div>

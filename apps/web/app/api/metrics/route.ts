@@ -1,8 +1,6 @@
 import { requestContext, listIncidentDtos } from "../../../lib/incidents";
-import {
-  syntheticEvaluationMetrics,
-  liveTenantMetrics,
-} from "../../../lib/metrics";
+import { liveTenantMetrics } from "../../../lib/metrics";
+import { syntheticEvaluationMetrics } from "../../../lib/benchmark";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const { tenantId } = requestContext(request);

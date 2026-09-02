@@ -23,6 +23,45 @@ const dateFormatter = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
 });
 
+// Metric-band formatters are built once: the measured counts on the
+// metrics page can reach the thousands, and every band formats at least
+// one number.
+const countFormat = new Intl.NumberFormat("en-IN");
+const percentRound = new Intl.NumberFormat("en-IN", {
+  style: "percent",
+  maximumFractionDigits: 0,
+});
+const percentPrecise = new Intl.NumberFormat("en-IN", {
+  style: "percent",
+  maximumFractionDigits: 1,
+});
+
+/* A whole-percent format turns 99.6% into "100%" and 0.4% into "0%" — a
+   rounding lie on the exact numbers an operator audits. At either boundary
+   keep one decimal, and never round across it: a near-perfect rate floors
+   to its last honest tenth (99.96% renders "99.9%") so only a true 100%
+   can claim "100%", and a barely-nonzero rate ceils to its first honest
+   tenth (0.04% renders "0.1%") so only a true zero reads "0%". A missing
+   metric renders "None yet", never "NaN%": the placeholder is a two-word
+   state so it wraps at the space at KPI size instead of breaking mid-word
+   like a single long token would. */
+export function formatPercent(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "None yet";
+  const rounded = Math.round(value * 100);
+  if (rounded === 100 && value < 1)
+    return percentPrecise.format(Math.floor(value * 1000) / 1000);
+  if (rounded === 0 && value > 0)
+    return percentPrecise.format(Math.ceil(value * 1000) / 1000);
+  return rounded === 0 || rounded === 100
+    ? percentPrecise.format(value)
+    : percentRound.format(value);
+}
+
+export function formatCount(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "None yet";
+  return countFormat.format(value);
+}
+
 export function formatMoney(
   amountMinor: number | null | undefined,
   currency = "INR",

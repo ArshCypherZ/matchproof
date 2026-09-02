@@ -66,11 +66,18 @@ export function OutcomeDistribution({
   return (
     <section
       aria-labelledby="outcome-heading"
-      className={cn("mt-10", className)}
+      /* Sub-section cadence: h3 groups sit mt-8 under their h2, the same
+         step "Closure and safety" uses, so the benchmark's three groups
+         read as peers of one section rather than chapters of their own. */
+      className={cn("mt-8", className)}
     >
       <h3 id="outcome-heading" className="text-base font-semibold">
         Outcome distribution
       </h3>
+      {/* Kept inside this section (advise 21 considered): the overlap is a
+         property of these four category counts — the rates above are not
+         category sums — so the caveat qualifies the distribution, not the
+         KPI strips. */}
       <p className="mt-1 text-xs text-muted-foreground">
         One benchmark case can appear in more than one outcome category.
       </p>
