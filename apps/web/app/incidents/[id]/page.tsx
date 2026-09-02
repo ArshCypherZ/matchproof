@@ -21,6 +21,7 @@ import { formatDate, formatMoney } from "@/components/shared/format";
 import { LoopRail } from "@/components/workbench/loop-rail";
 import { EvidenceTimeline } from "@/components/workbench/evidence-timeline";
 import { JudgmentPanel } from "@/components/workbench/judgment-panel";
+import { AdvisoryPanel } from "@/components/workbench/advisory-panel";
 import { PolicyDecision } from "@/components/workbench/policy-decision";
 import { PostRepairStateComparison } from "@/components/workbench/post-repair-state-comparison";
 import { IncidentActions } from "@/components/workbench/incident-actions";
@@ -264,10 +265,18 @@ export default async function IncidentPage({
       <WorkbenchSections
         evidence={<EvidenceTimeline evidence={incident.evidence} />}
         judgment={
-          <JudgmentPanel
-            incident={incident}
-            repaired={incident.status === "reconciled"}
-          />
+          <div className="grid gap-8">
+            <JudgmentPanel
+              incident={incident}
+              repaired={incident.status === "reconciled"}
+            />
+            {/* The advisory card renders only for records the live model
+                reviewed; a record that closed on rules alone has nothing
+                for it to say. */}
+            {incident.advisory ? (
+              <AdvisoryPanel advisory={incident.advisory} />
+            ) : null}
+          </div>
         }
         control={
           <div className="grid gap-8">

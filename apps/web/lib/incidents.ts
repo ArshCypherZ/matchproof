@@ -100,6 +100,92 @@ function currentProgress(
   );
 }
 
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function str(value: unknown): string | null {
+  return typeof value === "string" && value !== "" ? value : null;
+}
+
+function advisoryFromProgress(
+  progress: Awaited<ReturnType<IncidentStore["progress"]>>,
+) {
+  const output = record(
+    progress.find(
+      (row) => row.step === "diagnose" && row.status === "completed",
+    )?.details,
+  );
+  const provenance = record(output?.provenance);
+  if (provenance?.provider !== "groq") return null;
+  const diagnosis = record(output?.diagnosis);
+  const recommendation = record(diagnosis?.recommendation);
+  const action = str(recommendation?.action);
+  const reasoning = str(recommendation?.reasoning);
+  if (!action || !reasoning) return null;
+  const investigation = record(diagnosis?.investigation);
+  const nextRead = record(investigation?.next_safe_read);
+  const packet = record(investigation?.operator_packet);
+  const runbook = record(investigation?.runbook);
+  const hypotheses = Array.isArray(diagnosis?.hypotheses)
+    ? diagnosis.hypotheses
+        .map((entry) => {
+          const row = record(entry);
+          const rank = typeof row?.rank === "number" ? row.rank : null;
+          const summary = str(row?.summary);
+          const hypothesisReasoning = str(row?.reasoning);
+          return rank !== null && summary && hypothesisReasoning
+            ? { rank, summary, reasoning: hypothesisReasoning }
+            : null;
+        })
+        .filter((entry): entry is { rank: number; summary: string; reasoning: string } =>
+          entry !== null,
+        )
+    : [];
+  // The agent investigation persists one row per step; the completed row
+  // carries the whole trace of reads the model made.
+  const investigationRows = progress
+    .filter((row) => row.step === "agent_investigation")
+    .sort((left, right) => right.sequence - left.sequence);
+  const state = investigationRows
+    .map((row) => record(row.details))
+    .find(Boolean);
+  const trace = Array.isArray(state?.trace) ? state.trace : [];
+  const reads = trace
+    .map((entry) => {
+      const observation = record(record(entry)?.observation);
+      const tool = str(observation?.tool);
+      const result = str(observation?.result);
+      return tool && result ? { tool, result } : null;
+    })
+    .filter((entry): entry is { tool: string; result: string } =>
+      entry !== null,
+    );
+  return {
+    action,
+    reasoning,
+    uncertainty: str(recommendation?.uncertainty),
+    hypotheses,
+    missing_fact: str(investigation?.missing_fact),
+    next_read: nextRead
+      ? {
+          tool: str(nextRead.tool) ?? "",
+          reason: str(nextRead.reason) ?? "",
+          expected_fact: str(nextRead.expected_fact) ?? "",
+        }
+      : null,
+    stopping_condition: str(runbook?.stopping_condition),
+    decision_needed: str(packet?.decision_needed),
+    owner: str(packet?.terminal_owner),
+    provider: str(provenance.provider),
+    model: str(provenance.returned_model),
+    reads,
+  };
+}
+
 // Builds DTOs for a whole list of bundles with two queries total (progress +
 // payments), not two per incident.
 export async function incidentDtosForBundles(
@@ -308,6 +394,7 @@ export function incidentDto(
     reconstruction,
     reconciliation,
     progress,
+    advisory: advisoryFromProgress(progress),
   };
 }
 
