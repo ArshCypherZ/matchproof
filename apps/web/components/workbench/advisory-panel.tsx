@@ -60,6 +60,33 @@ function label(map: Record<string, string>, value: string) {
   return map[value] ?? value.replaceAll("_", " ");
 }
 
+/* One anatomy for every supporting fact in the card: a muted label line
+   (optionally carrying one machine-value chip) and one body-value line
+   below it. Nothing in the card is small-bold-inline or mixed-size. */
+function FactRow({
+  label: rowLabel,
+  value,
+  chip,
+}: {
+  label: string;
+  value: string;
+  chip?: string;
+}) {
+  return (
+    <div>
+      <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {rowLabel}
+        {chip ? (
+          <Badge translate="no" className="font-data">
+            {chip}
+          </Badge>
+        ) : null}
+      </p>
+      <p className="mt-1 max-w-prose text-sm leading-6">{value}</p>
+    </div>
+  );
+}
+
 type Chapter = {
   id: string;
   title: string;
@@ -75,67 +102,48 @@ export function AdvisoryPanel({ advisory }: { advisory: Advisory }) {
       id: "recommendation",
       title: "What it suggests",
       content: (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-4">
+          <div>
             <Badge>{label(ACTION_LABELS, advisory.action)}</Badge>
           </div>
-          <p className="mt-3 max-w-prose text-sm leading-6">
-            {advisory.reasoning}
-          </p>
+          <p className="max-w-prose text-sm leading-6">{advisory.reasoning}</p>
           {advisory.uncertainty ? (
-            <p className="mt-2 max-w-prose text-xs leading-5 text-muted-foreground">
-              <span className="font-medium text-foreground">Uncertainty</span>
-              <span aria-hidden="true" className="mx-1.5 text-ink-tertiary">
-                ·
-              </span>
-              {advisory.uncertainty}
-            </p>
+            <FactRow label="Uncertainty" value={advisory.uncertainty} />
           ) : null}
-        </>
+        </div>
       ),
     },
     {
       id: "missing",
       title: "What is missing",
       content: (
-        <>
+        <div className="space-y-4">
           {advisory.missing_fact ? (
             <p className="max-w-prose text-sm leading-6">
               {advisory.missing_fact}
             </p>
           ) : null}
+          {/* The read's own reason restates the recommendation's reasoning,
+              so the card shows what the read should reveal, not the same
+              paragraph twice. */}
           {advisory.next_read ? (
-            <div className="mt-3">
-              <p className="text-xs text-muted-foreground">Next safe read</p>
-              <p className="mt-1 max-w-prose text-sm leading-6">
-                {advisory.next_read.reason}
-              </p>
-              <p className="mt-1 max-w-prose text-xs leading-5 text-muted-foreground">
-                Expected: {advisory.next_read.expected_fact}
-              </p>
-            </div>
+            <FactRow
+              label="What to check next"
+              value={advisory.next_read.expected_fact}
+              chip={
+                advisory.next_read.tool !== "none"
+                  ? label(READ_LABELS, advisory.next_read.tool)
+                  : undefined
+              }
+            />
           ) : null}
           {advisory.decision_needed ? (
-            <p className="mt-3 max-w-prose text-sm leading-6">
-              <span className="font-medium">Decision needed</span>
-              <span aria-hidden="true" className="mx-1.5 text-ink-tertiary">
-                ·
-              </span>
-              {advisory.decision_needed}
-            </p>
+            <FactRow label="Decision needed" value={advisory.decision_needed} />
           ) : null}
           {advisory.stopping_condition ? (
-            <p className="mt-2 max-w-prose text-xs leading-5 text-muted-foreground">
-              <span className="font-medium text-foreground">
-                Stops when
-              </span>
-              <span aria-hidden="true" className="mx-1.5 text-ink-tertiary">
-                ·
-              </span>
-              {advisory.stopping_condition}
-            </p>
+            <FactRow label="Stops when" value={advisory.stopping_condition} />
           ) : null}
-        </>
+        </div>
       ),
     },
   ];
@@ -144,21 +152,26 @@ export function AdvisoryPanel({ advisory }: { advisory: Advisory }) {
       id: "hypotheses",
       title: "Ranked hypotheses",
       content: (
-        <ol className="space-y-4">
+        <div className="space-y-4">
           {advisory.hypotheses.map((hypothesis) => (
-            <li key={hypothesis.rank}>
-              <p className="flex items-baseline gap-2 text-sm font-medium">
-                <span className="font-data text-xs text-muted-foreground">
-                  {hypothesis.rank}
-                </span>
+            <div key={hypothesis.rank}>
+              <p className="text-sm font-medium">
+                {advisory.hypotheses.length > 1 ? (
+                  <span
+                    className="mr-2 font-data text-xs text-muted-foreground"
+                    aria-hidden="true"
+                  >
+                    {hypothesis.rank}
+                  </span>
+                ) : null}
                 {hypothesis.summary}
               </p>
-              <p className="mt-1 max-w-prose pl-6 text-sm leading-6 text-muted-foreground">
+              <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">
                 {hypothesis.reasoning}
               </p>
-            </li>
+            </div>
           ))}
-        </ol>
+        </div>
       ),
     });
 
