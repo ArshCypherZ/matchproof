@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
@@ -69,9 +70,9 @@ function importError(payload: {
 }) {
   switch (payload.error) {
     case "file_too_large":
-      return "That file is larger than 5 MB. Split it into smaller files and import each one.";
+      return "That file is larger than 5 MB. Split it into smaller files and import each one — up to five imports per minute.";
     case "too_many_rows":
-      return `That file has more than ${formatCount(payload.max_rows ?? 5000)} rows. Split it into smaller files and import each one.`;
+      return `That file has more than ${formatCount(payload.max_rows ?? 5000)} rows. Split it into smaller files and import each one — up to five imports per minute.`;
     case "invalid_ledger":
       return payload.reason
         ? `${payload.reason} Fix the file and import it again.`
@@ -81,13 +82,14 @@ function importError(payload: {
     case "expected_multipart_upload":
       return "The upload could not be read. Choose the file again and retry.";
     case "rate_limited":
-      return `Too many imports in a short time. No orders were changed. Try again in ${payload.retry_after_seconds ?? 60} seconds.`;
+      return `Too many imports in a short time; the limit is five per minute. No orders were changed. Try again in ${payload.retry_after_seconds ?? 60} seconds.`;
     default:
       return "The import did not complete. No orders were changed. Try again.";
   }
 }
 
 export function LedgerImportForm() {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<ImportState>({ kind: "idle" });
   const [filename, setFilename] = useState("");
@@ -118,7 +120,7 @@ export function LedgerImportForm() {
     if (file.size > MAX_UPLOAD_BYTES) {
       setState({
         kind: "failed",
-        reason: `That file is ${formatBytes(file.size)}. Imports are limited to 5 MB. Split it into smaller files and import each one.`,
+        reason: `That file is ${formatBytes(file.size)}; imports are limited to 5 MB. Split it into smaller files and import each one — up to five imports per minute.`,
       });
       inputRef.current?.focus();
       return;
@@ -147,6 +149,10 @@ export function LedgerImportForm() {
           "The import finished, but its result could not be read. Importing the same file again is safe: existing orders are updated, not duplicated.",
         );
       setState({ kind: "done", result });
+      // The header's count and "updated through" stamp are server data; the
+      // panel below says the ledger changed, so the page must not still show
+      // the pre-import figures above it.
+      router.refresh();
       setFilename("");
       setFileSizeBytes(0);
       if (inputRef.current) inputRef.current.value = "";
@@ -160,7 +166,7 @@ export function LedgerImportForm() {
         setState({
           kind: "failed",
           reason:
-            "The import did not finish within two minutes and was stopped. No orders were changed. Try again, or split the file into smaller imports.",
+            "The import did not finish within two minutes and was stopped. It may still be completing on the server. Importing the same file again is safe: existing orders are updated, not duplicated.",
         });
       } else {
         // fetch rejects with a TypeError when the request never reaches the
@@ -213,7 +219,8 @@ export function LedgerImportForm() {
             id="ledger-file-hint"
             className="mt-2 text-xs text-muted-foreground"
           >
-            CSV or XLSX, up to 5&nbsp;MB and 5,000&nbsp;rows.
+            CSV or XLSX, up to 5&nbsp;MB and 5,000&nbsp;rows. Existing orders
+            are updated, not duplicated.
           </p>
           {filename ? (
             <p className="mt-2 truncate font-data text-xs text-muted-foreground">
@@ -237,6 +244,13 @@ export function LedgerImportForm() {
           {state.kind === "uploading" ? "Importing…" : "Import ledger"}
         </Button>
       </form>
+      {state.kind === "uploading" ? (
+        // The spinner and the button's "Importing…" label are visual only;
+        // this is the only signal a screen reader gets during the wait.
+        <span role="status" className="sr-only">
+          Importing the ledger…
+        </span>
+      ) : null}
       {state.kind === "failed" ? (
         /* A failed import is a hard failure, not an ambiguous state: it
            carries the destructive pairing (tint plus strong ink) the Badge
@@ -255,14 +269,17 @@ export function LedgerImportForm() {
         </div>
       ) : null}
       {state.kind === "done" ? (
-        <div role="status" className="p-5">
+        <div className="p-5">
           <div className="flex gap-3">
             <CheckCircle2
               aria-hidden="true"
               className="mt-0.5 size-4 text-primary"
             />
             <div className="min-w-0">
-              <p className="text-sm">
+              {/* The live region carries the counts only: a 20-rejection
+                  import would otherwise announce the whole skipped-rows
+                  table in one blast. */}
+              <p role="status" className="text-sm">
                 <span className="font-data">
                   {formatCount(state.result.accepted)}
                 </span>{" "}
