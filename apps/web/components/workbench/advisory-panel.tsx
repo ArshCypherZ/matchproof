@@ -60,6 +60,13 @@ function label(map: Record<string, string>, value: string) {
   return map[value] ?? value.replaceAll("_", " ");
 }
 
+/* The model sometimes echoes machine identifiers from its prompt
+   (settlement_status, search_events) into otherwise readable prose. The
+   console's one convention applies to its output too: underscores out. */
+function text(value: string) {
+  return value.replaceAll("_", " ");
+}
+
 /* One anatomy for every supporting fact in the card: a muted label line
    (optionally carrying one machine-value chip) and one body-value line
    below it. Nothing in the card is small-bold-inline or mixed-size. */
@@ -106,9 +113,9 @@ export function AdvisoryPanel({ advisory }: { advisory: Advisory }) {
           <div>
             <Badge>{label(ACTION_LABELS, advisory.action)}</Badge>
           </div>
-          <p className="max-w-prose text-sm leading-6">{advisory.reasoning}</p>
+          <p className="max-w-prose text-sm leading-6">{text(advisory.reasoning)}</p>
           {advisory.uncertainty ? (
-            <FactRow label="Uncertainty" value={advisory.uncertainty} />
+            <FactRow label="Uncertainty" value={text(advisory.uncertainty)} />
           ) : null}
         </div>
       ),
@@ -120,7 +127,7 @@ export function AdvisoryPanel({ advisory }: { advisory: Advisory }) {
         <div className="space-y-4">
           {advisory.missing_fact ? (
             <p className="max-w-prose text-sm leading-6">
-              {advisory.missing_fact}
+              {text(advisory.missing_fact)}
             </p>
           ) : null}
           {/* The read's own reason restates the recommendation's reasoning,
@@ -129,7 +136,7 @@ export function AdvisoryPanel({ advisory }: { advisory: Advisory }) {
           {advisory.next_read ? (
             <FactRow
               label="What to check next"
-              value={advisory.next_read.expected_fact}
+              value={text(advisory.next_read.expected_fact)}
               chip={
                 advisory.next_read.tool !== "none"
                   ? label(READ_LABELS, advisory.next_read.tool)
@@ -138,10 +145,16 @@ export function AdvisoryPanel({ advisory }: { advisory: Advisory }) {
             />
           ) : null}
           {advisory.decision_needed ? (
-            <FactRow label="Decision needed" value={advisory.decision_needed} />
+            <FactRow
+              label="Decision needed"
+              value={text(advisory.decision_needed)}
+            />
           ) : null}
           {advisory.stopping_condition ? (
-            <FactRow label="Stops when" value={advisory.stopping_condition} />
+            <FactRow
+              label="Stops when"
+              value={text(advisory.stopping_condition)}
+            />
           ) : null}
         </div>
       ),
@@ -164,10 +177,10 @@ export function AdvisoryPanel({ advisory }: { advisory: Advisory }) {
                     {hypothesis.rank}
                   </span>
                 ) : null}
-                {hypothesis.summary}
+                {text(hypothesis.summary)}
               </p>
               <p className="mt-1 max-w-prose text-sm leading-6 text-muted-foreground">
-                {hypothesis.reasoning}
+                {text(hypothesis.reasoning)}
               </p>
             </div>
           ))}
