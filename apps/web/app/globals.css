@@ -18,7 +18,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
   --font-display: var(--font-geist-sans);
   /* One motion system: ease-out for state change, emphasized for
      spatial moves. Only animate the properties that change. */
@@ -173,6 +172,15 @@
   .font-data {
     font-family: var(--font-geist-mono), ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* A fintech figure: the fractional part of a large number renders
+     smaller and in secondary ink so the magnitude leads (advise 25).
+     em-based so the fraction follows the value's own size. */
+  .figure-fraction {
+    font-size: 0.625em;
+    line-height: 1;
+    color: var(--ink-secondary);
   }
 
   /* Skip-link and hash targets must land clear of the sticky header: it is
