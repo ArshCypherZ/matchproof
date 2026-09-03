@@ -98,7 +98,7 @@ The AI advisor can read and suggest; our algorithm is the only thing that can wr
 
 ## Run it
 
-One incident from the test set, end to end — no keys, no services, no database:
+One incident from the test set, end to end — no keys, no services, no database (requires [Node 22+](https://nodejs.org) and [pnpm 11](https://pnpm.io/installation)):
 
 ```bash
 pnpm install && pnpm demo
@@ -106,13 +106,13 @@ pnpm install && pnpm demo
 
 You see the evidence pulled, all nine checks run, the decision, the repair, and the re-check that closes it.
 
-Requires Node 22+, pnpm 11, Docker. Copy `.env.example` to `.env`, then:
+Full dashboard via [Docker](https://docs.docker.com/get-docker/) (on Windows, use [Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/) or WSL2). Copy `.env.example` to `.env`, then:
 
 ```bash
 docker compose up --build        # dashboard on http://localhost:3101
 ```
 
-Local dashboard on `http://localhost:3000`:
+Local dashboard on `http://localhost:3000` (macOS / Linux / WSL2):
 
 ```bash
 docker compose up -d postgres redis
