@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/banner.svg" width="720" alt="Matchproof — payment captured, order still pending: found, fixed, proven" />
 
-  <a href="https://matchproof.arshjaved.in"><b>Live dashboard</b></a> · running on Razorpay Test Mode
+  <a href="https://matchproof.arshjaved.in"><b>Live dashboard</b></a> · <a href="https://www.youtube.com/watch?v=sABoifUHPSM"><b>Demo video</b></a> · running on Razorpay Test Mode
 
   <a href="https://razorpay.com"><img src="https://img.shields.io/badge/Razorpay-0C2451?style=flat-square&logo=razorpay&logoColor=white" alt="Razorpay" /></a>
   &nbsp;<a href="https://groq.com"><img src="https://img.shields.io/badge/Groq-F55036?style=flat-square" alt="Groq" /></a>
