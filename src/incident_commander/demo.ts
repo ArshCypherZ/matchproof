@@ -1,5 +1,6 @@
 import { runIncident } from "./workflow";
 import path from "node:path";
+import fs from "node:fs";
 const root = path.resolve(__dirname, "../..");
 const defaultFixtureState = path.join(
   root,
@@ -11,6 +12,7 @@ async function main() {
   const state = args.includes("--state")
     ? (args[args.indexOf("--state") + 1] ?? defaultFixtureState)
     : defaultFixtureState;
+  fs.mkdirSync(path.dirname(state), { recursive: true });
   const result = await runIncident(
     path.join(root, "fixtures/timeout_after_mutation.json"),
     state,
